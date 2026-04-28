@@ -1,0 +1,672 @@
+"use client";
+
+import { ShoppingCart, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { addLedgerEntry, getOrCreateLedgerAccountId } from "@/lib/ledger";
+import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
+import { makeSyncEvent } from "@/lib/syncEvents";
+import { newUid } from "@/lib/uid";
+
+export default function OrdersPage() {
+  const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
+  const sales = useLiveQuery(() => db.sales.toArray()) || [];
+  const purchases = useLiveQuery(() => db.purchases.toArray()) || [];
+  const financialAccounts = useLiveQuery(() => db.financialAccounts.toArray()) || [];
+  
+  const [activeTab, setActiveTab] = useState<'Sales' | 'Purchases'>('Sales');
+  const [showForm, setShowForm] = useState(false);
+  
+  const [saleForm, setSaleForm] = useState<{
+    itemId: number;
+    quantity: number;
+    customerName: string;
+    paymentType: "Cash" | "Credit";
+    method: PaymentMethod;
+    financialAccountId: number;
+  }>({ itemId: 0, quantity: 1, customerName: "", paymentType: "Cash", method: "Cash", financialAccountId: 0 });
+  const [purchaseForm, setPurchaseForm] = useState({
+    supplierName: "",
+    date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+    paymentType: "Credit" as "Cash" | "Credit",
+    method: "Cash" as PaymentMethod,
+    financialAccountId: 0,
+    lineItemDraft: { itemId: 0, quantity: 1 },
+    lineItems: [] as Array<{ itemId: number; quantity: number }>,
+  });
+
+  const saleTotal = useMemo(() => {
+    const item = inventory.find((i) => i.id === Number(saleForm.itemId));
+    return item ? item.sellingPrice * saleForm.quantity : 0;
+  }, [inventory, saleForm.itemId, saleForm.quantity]);
+
+  const purchaseTotal = useMemo(() => {
+    return purchaseForm.lineItems.reduce((acc, li) => {
+      const item = inventory.find((i) => i.id === li.itemId);
+      const unitCost = item?.costPrice ?? 0;
+      return acc + unitCost * li.quantity;
+    }, 0);
+  }, [inventory, purchaseForm.lineItems]);
+
+  const addPurchaseLineItem = () => {
+    const itemId = Number(purchaseForm.lineItemDraft.itemId);
+    const quantity = Number(purchaseForm.lineItemDraft.quantity);
+    if (!itemId || quantity <= 0) return;
+
+    setPurchaseForm((prev) => {
+      const existingIdx = prev.lineItems.findIndex((li) => li.itemId === itemId);
+      const nextLineItems = [...prev.lineItems];
+      if (existingIdx >= 0) {
+        nextLineItems[existingIdx] = {
+          itemId,
+          quantity: nextLineItems[existingIdx].quantity + quantity,
+        };
+      } else {
+        nextLineItems.push({ itemId, quantity });
+      }
+      return { ...prev, lineItems: nextLineItems, lineItemDraft: { itemId: 0, quantity: 1 } };
+    });
+  };
+
+  const removePurchaseLineItem = (itemId: number) => {
+    setPurchaseForm((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.filter((li) => li.itemId !== itemId),
+    }));
+  };
+
+  const handleSaleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const item = inventory.find(i => i.id === Number(saleForm.itemId));
+    if (!item || item.quantity < saleForm.quantity) return alert("Not enough stock!");
+    
+    const totalPrice = item.sellingPrice * saleForm.quantity;
+    const date = new Date().toISOString();
+
+    const isCredit = saleForm.paymentType === "Credit";
+    if (isCredit && !saleForm.customerName.trim()) {
+      return alert("Customer name is required for Credit sales (for ledger).");
+    }
+
+    await db.transaction('rw', db.tables, async () => {
+      // 1. Record Sale
+      const sale = {
+        uid: newUid(),
+        itemId: item.id!,
+        quantity: saleForm.quantity,
+        totalPrice,
+        customerName: saleForm.customerName,
+        paymentType: saleForm.paymentType,
+        date,
+      };
+      const saleId = await db.sales.add(sale);
+
+      // 2. Reduce Stock
+      await db.inventory.update(item.id!, { quantity: item.quantity - saleForm.quantity });
+      // 3. Record Movement
+      const movement = { uid: newUid(), itemId: item.id!, quantity: saleForm.quantity, type: 'OUT' as const, reason: 'Sale' as const, date };
+      const movementId = await db.stockMovement.add(movement);
+      // 4. DayBook Entry (cash only)
+      let dayBookId: number | null = null;
+      let dayBookUid: string | null = null;
+      let dayBookEntry: any = null;
+      if (!isCredit) {
+        const accountId = Number(saleForm.financialAccountId) || (await getOrCreateDefaultCashAccountId());
+        const acct = await db.financialAccounts.get(accountId);
+        dayBookUid = newUid();
+        dayBookEntry = {
+          uid: dayBookUid,
+          time: date,
+          type: "Income",
+          category: "Sale",
+          amount: totalPrice,
+          description: `Sold ${saleForm.quantity} ${item.unit} ${item.name} (${saleForm.method})`,
+          method: saleForm.method,
+          accountId,
+        };
+        dayBookId = (await db.dayBook.add(dayBookEntry)) as number;
+
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "daybook.entry",
+            entityId: dayBookUid,
+            op: "create",
+            payload: {
+              entry: {
+                ...dayBookEntry,
+                account: acct?.uid
+                  ? { uid: acct.uid, name: acct.name, type: acct.type }
+                  : null,
+              },
+            },
+          })
+        );
+      }
+
+      // 5. Ledger entry (credit only)
+      let ledgerAccountId: number | null = null;
+      let ledgerEntryId: number | null = null;
+      let ledgerAccount: any = null;
+      let ledgerEntry: any = null;
+      if (isCredit) {
+        ledgerAccountId = await getOrCreateLedgerAccountId({ name: saleForm.customerName, type: "Customer" });
+        const acct = await db.ledgerAccounts.get(ledgerAccountId);
+        ledgerAccount = acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null;
+        ledgerEntryId = (await addLedgerEntry({
+          accountId: ledgerAccountId,
+          date,
+          description: `Credit sale: ${saleForm.quantity} ${item.unit} ${item.name}`,
+          debit: totalPrice,
+          credit: 0,
+        })) as number;
+        const entryRow = await db.ledgerEntries.get(ledgerEntryId);
+        ledgerEntry = entryRow?.uid
+          ? {
+              uid: entryRow.uid,
+              date: entryRow.date,
+              description: entryRow.description,
+              debit: entryRow.debit,
+              credit: entryRow.credit,
+            }
+          : null;
+
+        if (ledgerAccount?.uid && ledgerEntry?.uid) {
+          await db.outbox.add(
+            makeSyncEvent({
+              entityType: "ledger.entry",
+              entityId: ledgerEntry.uid,
+              op: "create",
+              payload: { account: ledgerAccount, entry: ledgerEntry },
+            })
+          );
+        }
+      }
+
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "order.sale",
+          entityId: sale.uid!,
+          op: "create",
+          payload: {
+            sale: { ...sale, itemUid: item.uid },
+            movement: { ...movement, itemUid: item.uid },
+            inventoryDelta: { itemUid: item.uid, delta: -saleForm.quantity },
+            dayBookUid,
+            ledgerEntryUid: ledgerEntry?.uid ?? null,
+            ledgerAccountUid: ledgerAccount?.uid ?? null,
+          },
+        })
+      );
+    });
+
+    setShowForm(false);
+    setSaleForm({ itemId: 0, quantity: 1, customerName: "", paymentType: "Cash", method: "Cash", financialAccountId: 0 });
+  };
+
+  const handlePurchaseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!purchaseForm.supplierName.trim()) return alert("Supplier name is required.");
+    if (purchaseForm.lineItems.length === 0) return alert("Add at least one item to purchase.");
+
+    const date = new Date(`${purchaseForm.date}T12:00:00`).toISOString();
+    const supplierName = purchaseForm.supplierName.trim();
+
+    const lineItemsResolved = purchaseForm.lineItems.map((li) => {
+      const item = inventory.find((i) => i.id === li.itemId);
+      return { ...li, item };
+    });
+
+    if (lineItemsResolved.some((li) => !li.item)) return alert("One or more selected items were not found.");
+
+    const totalCost = lineItemsResolved.reduce((acc, li) => acc + (li.item!.costPrice * li.quantity), 0);
+    const description = `Purchase from ${supplierName} (${purchaseForm.lineItems.length} item(s))`;
+
+    await db.transaction('rw', db.tables, async () => {
+      const purchaseBatchUid = newUid();
+      const purchaseRows: any[] = [];
+      const movementRows: any[] = [];
+      const inventoryDeltas: Array<{ itemUid: string; delta: number }> = [];
+
+      for (const li of lineItemsResolved) {
+        const item = li.item!;
+        if (!item.uid) throw new Error("Inventory item missing uid (sync requires uid)");
+        const lineCost = item.costPrice * li.quantity;
+
+        const purchase = {
+          uid: newUid(),
+          supplierName,
+          itemId: item.id!,
+          quantity: li.quantity,
+          totalCost: lineCost,
+          date,
+        };
+        const pid = await db.purchases.add(purchase);
+
+        await db.inventory.update(item.id!, { quantity: item.quantity + li.quantity });
+        const movement = { uid: newUid(), itemId: item.id!, quantity: li.quantity, type: 'IN' as const, reason: 'Purchase' as const, date };
+        const mid = await db.stockMovement.add(movement);
+
+        purchaseRows.push({ ...purchase, itemUid: item.uid, localId: pid });
+        movementRows.push({ ...movement, itemUid: item.uid, localId: mid });
+        inventoryDeltas.push({ itemUid: item.uid, delta: li.quantity });
+      }
+
+      // Purchase accounting:
+      // - Cash: affects Day Book (selected account) and does NOT create payable.
+      // - Credit: creates payable in ledger and does NOT affect Day Book.
+      let dayBookId: number | null = null;
+      let dayBookUid: string | null = null;
+      let dayBookEntry: any = null;
+      let ledgerAccountId: number | null = null;
+      let ledgerEntryId: number | null = null;
+      let ledgerAccount: any = null;
+      let ledgerEntry: any = null;
+      if (purchaseForm.paymentType === "Cash") {
+        const accountId = Number(purchaseForm.financialAccountId) || (await getOrCreateDefaultCashAccountId());
+        const acct = await db.financialAccounts.get(accountId);
+        dayBookUid = newUid();
+        dayBookEntry = {
+          uid: dayBookUid,
+          time: date,
+          type: "Expense",
+          category: "Purchase",
+          amount: totalCost,
+          description: `${description} (${purchaseForm.method})`,
+          method: purchaseForm.method,
+          accountId,
+        };
+        dayBookId = (await db.dayBook.add(dayBookEntry)) as number;
+
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "daybook.entry",
+            entityId: dayBookUid,
+            op: "create",
+            payload: {
+              entry: {
+                ...dayBookEntry,
+                account: acct?.uid
+                  ? { uid: acct.uid, name: acct.name, type: acct.type }
+                  : null,
+              },
+            },
+          })
+        );
+      } else {
+        ledgerAccountId = await getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" });
+        ledgerEntryId = (await addLedgerEntry({ accountId: ledgerAccountId, date, description, debit: 0, credit: totalCost })) as number;
+        const acct = await db.ledgerAccounts.get(ledgerAccountId);
+        ledgerAccount = acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null;
+        const entryRow = await db.ledgerEntries.get(ledgerEntryId);
+        ledgerEntry = entryRow?.uid
+          ? {
+              uid: entryRow.uid,
+              date: entryRow.date,
+              description: entryRow.description,
+              debit: entryRow.debit,
+              credit: entryRow.credit,
+            }
+          : null;
+
+        if (ledgerAccount?.uid && ledgerEntry?.uid) {
+          await db.outbox.add(
+            makeSyncEvent({
+              entityType: "ledger.entry",
+              entityId: ledgerEntry.uid,
+              op: "create",
+              payload: { account: ledgerAccount, entry: ledgerEntry },
+            })
+          );
+        }
+      }
+
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "order.purchase",
+          entityId: purchaseBatchUid,
+          op: "create",
+          payload: {
+            purchaseBatchUid,
+            supplierName,
+            date,
+            paymentType: purchaseForm.paymentType,
+            method: purchaseForm.method,
+            totalCost,
+            purchases: purchaseRows.map(({ localId, ...p }) => p),
+            movements: movementRows.map(({ localId, ...m }) => m),
+            inventoryDeltas,
+            dayBookUid,
+            ledgerEntryUid: ledgerEntry?.uid ?? null,
+            ledgerAccountUid: ledgerAccount?.uid ?? null,
+          },
+        })
+      );
+    });
+
+    setShowForm(false);
+    setPurchaseForm({
+      supplierName: "",
+      date: new Date().toISOString().slice(0, 10),
+      paymentType: "Credit",
+      method: "Cash",
+      financialAccountId: 0,
+      lineItemDraft: { itemId: 0, quantity: 1 },
+      lineItems: [],
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-2xl font-semibold text-slate-900">Order Management</h1>
+        <div className="flex bg-slate-100 p-1 rounded-lg">
+          <button onClick={() => setActiveTab('Sales')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Sales' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>Sales (POS)</button>
+          <button onClick={() => setActiveTab('Purchases')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Purchases' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>Purchases</button>
+        </div>
+        <button 
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          <span>{showForm ? "Cancel" : activeTab === 'Sales' ? "New Sale" : "New Purchase"}</span>
+        </button>
+      </div>
+
+      {showForm && activeTab === 'Sales' && (
+        <form onSubmit={handleSaleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Select Item</label>
+            <select required value={saleForm.itemId} onChange={e => setSaleForm({...saleForm, itemId: Number(e.target.value)})} className="w-full px-3 py-2 border rounded-md bg-white">
+              <option value={0}>Select...</option>
+              {inventory.map(i => <option key={i.id} value={i.id}>{i.name} ({i.quantity} {i.unit} left)</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Quantity</label>
+            <input required type="number" min={1} value={saleForm.quantity} onChange={e => setSaleForm({...saleForm, quantity: Number(e.target.value)})} className="w-full px-3 py-2 border rounded-md" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Customer Name (Optional)</label>
+            <input type="text" value={saleForm.customerName} onChange={e => setSaleForm({...saleForm, customerName: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Payment Type</label>
+            <select value={saleForm.paymentType} onChange={e => setSaleForm({...saleForm, paymentType: e.target.value as "Cash"|"Credit"})} className="w-full px-3 py-2 border rounded-md bg-white">
+              <option value="Cash">Cash</option>
+              <option value="Credit">Credit (Update Ledger)</option>
+            </select>
+          </div>
+          {saleForm.paymentType === "Cash" ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1">Payment Mode</label>
+                <select
+                  value={saleForm.method}
+                  onChange={(e) => setSaleForm({ ...saleForm, method: e.target.value as PaymentMethod })}
+                  className="w-full px-3 py-2 border rounded-md bg-white"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="QR">QR</option>
+                  <option value="BankTransfer">Bank Transfer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Account</label>
+                <select
+                  value={saleForm.financialAccountId}
+                  onChange={(e) => setSaleForm({ ...saleForm, financialAccountId: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border rounded-md bg-white"
+                >
+                  <option value={0}>Select account…</option>
+                  {sortAccountsForPicker(financialAccounts).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.type} — {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : null}
+          <div className="sm:col-span-2 lg:col-span-4 flex justify-between items-center mt-2 border-t pt-4">
+            <div className="text-lg font-semibold text-slate-900">
+              Total: Rs. {saleTotal}
+            </div>
+            <button type="submit" className="px-6 py-2 bg-alert-green text-white rounded-md hover:bg-alert-green/90">Complete Sale</button>
+          </div>
+        </form>
+      )}
+
+      {showForm && activeTab === 'Purchases' && (
+        <form onSubmit={handlePurchaseSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Supplier Name</label>
+              <input
+                required
+                type="text"
+                value={purchaseForm.supplierName}
+                onChange={(e) => setPurchaseForm({ ...purchaseForm, supplierName: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Date</label>
+              <input
+                required
+                type="date"
+                value={purchaseForm.date}
+                onChange={(e) => setPurchaseForm({ ...purchaseForm, date: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Payment Type</label>
+              <select
+                value={purchaseForm.paymentType}
+                onChange={(e) => setPurchaseForm({ ...purchaseForm, paymentType: e.target.value as "Cash" | "Credit" })}
+                className="w-full px-3 py-2 border rounded-md bg-white"
+              >
+                <option value="Credit">Credit (Payable in Ledger)</option>
+                <option value="Cash">Paid Now (Affects Account)</option>
+              </select>
+            </div>
+          </div>
+
+          {purchaseForm.paymentType === "Cash" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Payment Mode</label>
+                <select
+                  value={purchaseForm.method}
+                  onChange={(e) => setPurchaseForm({ ...purchaseForm, method: e.target.value as PaymentMethod })}
+                  className="w-full px-3 py-2 border rounded-md bg-white"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="QR">QR</option>
+                  <option value="BankTransfer">Bank Transfer</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium mb-1">Account</label>
+                <select
+                  value={purchaseForm.financialAccountId}
+                  onChange={(e) => setPurchaseForm({ ...purchaseForm, financialAccountId: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border rounded-md bg-white"
+                >
+                  <option value={0}>Select account…</option>
+                  {sortAccountsForPicker(financialAccounts).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.type} — {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium mb-1">Select Item</label>
+              <select
+                value={purchaseForm.lineItemDraft.itemId}
+                onChange={(e) =>
+                  setPurchaseForm({
+                    ...purchaseForm,
+                    lineItemDraft: { ...purchaseForm.lineItemDraft, itemId: Number(e.target.value) },
+                  })
+                }
+                className="w-full px-3 py-2 border rounded-md bg-white"
+              >
+                <option value={0}>Select...</option>
+                {inventory.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name} (Current: {i.quantity} {i.unit})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Quantity</label>
+              <input
+                type="number"
+                min={1}
+                value={purchaseForm.lineItemDraft.quantity}
+                onChange={(e) =>
+                  setPurchaseForm({
+                    ...purchaseForm,
+                    lineItemDraft: { ...purchaseForm.lineItemDraft, quantity: Number(e.target.value) },
+                  })
+                }
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={addPurchaseLineItem}
+                className="w-full px-4 py-2 bg-secondary text-white rounded-md hover:bg-secondary/90"
+              >
+                Add Item
+              </button>
+            </div>
+          </div>
+
+          <div className="border rounded-lg overflow-hidden">
+            <div className="bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700">Items Purchased</div>
+            {purchaseForm.lineItems.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-slate-500">No items added yet.</div>
+            ) : (
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-white">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Qty</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Line Cost</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Remove</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {purchaseForm.lineItems.map((li) => {
+                    const item = inventory.find((i) => i.id === li.itemId);
+                    const lineCost = (item?.costPrice ?? 0) * li.quantity;
+                    return (
+                      <tr key={li.itemId}>
+                        <td className="px-4 py-2 text-sm text-slate-900">{item?.name ?? "Unknown"}</td>
+                        <td className="px-4 py-2 text-sm text-slate-900">{li.quantity}</td>
+                        <td className="px-4 py-2 text-sm text-slate-900">Rs. {lineCost}</td>
+                        <td className="px-4 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => removePurchaseLineItem(li.itemId)}
+                            className="text-alert-red hover:text-alert-red/80 text-sm font-medium"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="flex justify-between items-center border-t pt-4">
+            <div className="text-lg font-semibold text-slate-900">Total Cost: Rs. {purchaseTotal}</div>
+            <button type="submit" className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90">
+              Complete Purchase
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* History Tables */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        {activeTab === 'Sales' ? (
+          sales.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+               <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+               <p className="text-lg font-medium text-slate-900">No sales recorded</p>
+            </div>
+          ) : (
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Customer</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {sales.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(sale => {
+                  const item = inventory.find(i => i.id === sale.itemId);
+                  return (
+                    <tr key={sale.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(sale.date).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{sale.customerName || "Walk-in"} ({sale.paymentType})</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{sale.quantity}x {item?.name || 'Unknown'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-alert-green">+ Rs. {sale.totalPrice}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )
+        ) : (
+          purchases.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+               <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+               <p className="text-lg font-medium text-slate-900">No purchases recorded</p>
+            </div>
+          ) : (
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Supplier</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cost</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {purchases.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(purchase => {
+                  const item = inventory.find(i => i.id === purchase.itemId);
+                  return (
+                    <tr key={purchase.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(purchase.date).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{purchase.supplierName}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{purchase.quantity}x {item?.name || 'Unknown'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">- Rs. {purchase.totalCost}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
