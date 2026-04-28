@@ -22,6 +22,7 @@ export const metadata: Metadata = {
       { url: "/logo.png", sizes: "32x32", type: "image/png" },
       { url: "/logo.png", sizes: "192x192", type: "image/png" },
     ],
+    shortcut: [{ url: "/logo.png" }],
     apple: [{ url: "/logo.png" }],
   },
 };
