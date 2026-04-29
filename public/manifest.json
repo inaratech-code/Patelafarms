@@ -3,12 +3,18 @@
   "name": "Patela Farm Management",
   "short_name": "Patela Farms",
   "description": "Offline-first farm management system",
+  "categories": ["business", "productivity"],
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
   "orientation": "portrait",
+  "lang": "en",
+  "dir": "ltr",
   "background_color": "#ffffff",
   "theme_color": "#0871b3",
+  "prefer_related_applications": false,
+  "related_applications": [],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -23,8 +29,14 @@
   ],
   "screenshots": [
     {
-      "src": "/logo.png",
-      "sizes": "492x508",
+      "src": "/screenshots/narrow.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/wide.png",
+      "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide"
     }
