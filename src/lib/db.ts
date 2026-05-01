@@ -4,7 +4,6 @@ export interface InventoryItem {
   id?: number;
   uid?: string; // stable id for sync
   name: string;
-  category: string;
   quantity: number;
   unit: string;
   costPrice: number;
@@ -316,6 +315,28 @@ export class PatelaFarmDatabase extends Dexie {
         const t = tx.table("financialAccounts");
         await t.toCollection().modify((row: any) => {
           if (!row.uid) row.uid = uuidv4();
+        });
+      });
+
+    this.version(8)
+      .stores({
+        inventory: '++id, uid, name, quantity',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date',
+        purchases: '++id, uid, supplierName, itemId, date',
+        dayBook: '++id, uid, time, type, category, accountId',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, name',
+        users: '++id, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+      })
+      .upgrade(async (tx) => {
+        const inventory = tx.table("inventory");
+        await inventory.toCollection().modify((row: any) => {
+          if ("category" in row) delete row.category;
         });
       });
 

@@ -15,7 +15,6 @@ export default function InventoryPage() {
   // New Item Form
   const [formData, setFormData] = useState({
     name: "",
-    category: "Crop",
     quantity: "",
     unit: "kg",
     costPrice: "",
@@ -61,7 +60,7 @@ export default function InventoryPage() {
       );
     });
     setShowForm(false);
-    setFormData({ name: "", category: "Crop", quantity: "", unit: "kg", costPrice: "", sellingPrice: "", minStockThreshold: "", expiryDate: "" });
+    setFormData({ name: "", quantity: "", unit: "kg", costPrice: "", sellingPrice: "", minStockThreshold: "", expiryDate: "" });
     setUnitMode("preset");
     setCustomUnit("");
   };
@@ -90,15 +89,6 @@ export default function InventoryPage() {
           <div>
             <label className="block text-sm font-medium mb-1">Item Name</label>
             <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Category</label>
-            <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full px-3 py-2 border rounded-md bg-white">
-              <option value="Crop">Crop</option>
-              <option value="Dairy">Dairy</option>
-              <option value="Fertilizer">Fertilizer</option>
-              <option value="Equipment">Equipment</option>
-            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Opening Quantity</label>
@@ -222,7 +212,6 @@ export default function InventoryPage() {
                   <tr key={item.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-slate-900">{item.name}</div>
-                      <div className="text-sm text-slate-500">{item.category}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-bold text-slate-900 mb-1">{item.quantity} {item.unit}</div>
