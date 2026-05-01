@@ -18,8 +18,23 @@ export interface StockMovement {
   itemId: number;
   quantity: number;
   type: 'IN' | 'OUT';
-  reason: 'Harvest' | 'Purchase' | 'Sale' | 'Usage' | 'Damage';
+  reason: 'Harvest' | 'Purchase' | 'Sale' | 'Usage' | 'Damage' | 'Loss';
   date: string;
+}
+
+export type InventoryLossType = "Dead" | "Damaged" | "Spoiled" | "Missing" | "Theft" | "Wastage";
+
+export interface InventoryLoss {
+  id?: number;
+  uid?: string;
+  itemId: number;
+  lossType: InventoryLossType;
+  quantity: number;
+  unit: string;
+  estimatedCost: number;
+  reason?: string;
+  date: string; // ISO
+  createdBy?: string;
 }
 
 export interface Sale {
@@ -121,13 +136,14 @@ export interface SyncEvent {
   entityType: string;
   entityId: string;
   op: SyncEventOp;
-  payload: any;
+  payload: unknown;
   appliedAt?: string; // ISO
   pushedAt?: string; // ISO
 }
 
 export class PatelaFarmDatabase extends Dexie {
   inventory!: EntityTable<InventoryItem, 'id'>;
+  inventoryLosses!: EntityTable<InventoryLoss, "id">;
   stockMovement!: EntityTable<StockMovement, 'id'>;
   sales!: EntityTable<Sale, 'id'>;
   purchases!: EntityTable<Purchase, 'id'>;
@@ -174,12 +190,12 @@ export class PatelaFarmDatabase extends Dexie {
 
         const cashId = await financialAccounts.add({ name: "Cash in Hand", type: "Cash" });
 
-        await dayBook.toCollection().modify((e: any) => {
+        await dayBook.toCollection().modify((e: Record<string, unknown>) => {
           if (typeof e.accountId !== "number") e.accountId = cashId;
           if (!e.method) e.method = "Cash";
         });
 
-        await payments.toCollection().modify((p: any) => {
+        await payments.toCollection().modify((p: Record<string, unknown>) => {
           if (typeof p.accountId !== "number") p.accountId = cashId;
           if (!p.method) p.method = "Cash";
         });
@@ -224,20 +240,20 @@ export class PatelaFarmDatabase extends Dexie {
         });
 
         // Migrate old user shape -> new user shape.
-        await users.toCollection().modify((u: any) => {
+        await users.toCollection().modify((u: Record<string, unknown>) => {
           const oldRole = String(u.role ?? "").toLowerCase();
           const roleId =
             oldRole === "admin" ? adminId : oldRole === "manager" ? managerId : workerId;
 
           // Old schema used `name`; keep it as username.
-          u.username = u.username ?? u.name ?? "user";
-          delete u.name;
-          delete u.role;
-          delete u.permissions;
+          u.username = (u.username ?? u.name ?? "user") as unknown;
+          delete (u as Record<string, unknown>).name;
+          delete (u as Record<string, unknown>).role;
+          delete (u as Record<string, unknown>).permissions;
 
           u.roleId = roleId;
-          if (!u.email) delete u.email;
-          if (!u.passwordHash) delete u.passwordHash;
+          if (!u.email) delete (u as Record<string, unknown>).email;
+          if (!u.passwordHash) delete (u as Record<string, unknown>).passwordHash;
         });
       });
 
@@ -273,12 +289,12 @@ export class PatelaFarmDatabase extends Dexie {
       })
       .upgrade(async (tx) => {
         const uuidv4 = () =>
-          (globalThis.crypto as any)?.randomUUID?.() ??
+          (globalThis.crypto as unknown as { randomUUID?: () => string })?.randomUUID?.() ??
           `${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
 
         const ensureUid = async (tableName: string) => {
           const t = tx.table(tableName);
-          await t.toCollection().modify((row: any) => {
+          await t.toCollection().modify((row: Record<string, unknown>) => {
             if (!row.uid) row.uid = uuidv4();
           });
         };
@@ -310,10 +326,10 @@ export class PatelaFarmDatabase extends Dexie {
       })
       .upgrade(async (tx) => {
         const uuidv4 = () =>
-          (globalThis.crypto as any)?.randomUUID?.() ??
+          (globalThis.crypto as unknown as { randomUUID?: () => string })?.randomUUID?.() ??
           `${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
         const t = tx.table("financialAccounts");
-        await t.toCollection().modify((row: any) => {
+        await t.toCollection().modify((row: Record<string, unknown>) => {
           if (!row.uid) row.uid = uuidv4();
         });
       });
@@ -335,12 +351,29 @@ export class PatelaFarmDatabase extends Dexie {
       })
       .upgrade(async (tx) => {
         const inventory = tx.table("inventory");
-        await inventory.toCollection().modify((row: any) => {
-          if ("category" in row) delete row.category;
+        await inventory.toCollection().modify((row: Record<string, unknown>) => {
+          if ("category" in row) delete (row as Record<string, unknown>).category;
         });
       });
 
+    this.version(9).stores({
+      inventory: '++id, uid, name, quantity',
+      inventoryLosses: '++id, uid, itemId, lossType, date',
+      stockMovement: '++id, uid, itemId, type, reason, date',
+      sales: '++id, uid, itemId, paymentType, date',
+      purchases: '++id, uid, supplierName, itemId, date',
+      dayBook: '++id, uid, time, type, category, accountId',
+      ledgerAccounts: '++id, uid, name, type',
+      ledgerEntries: '++id, uid, accountId, date',
+      payments: '++id, uid, partyAccountId, direction, date, accountId',
+      financialAccounts: '++id, uid, name, type',
+      roles: '++id, name',
+      users: '++id, username, roleId',
+      outbox: 'id, createdAt, pushedAt, entityType, entityId',
+    });
+
     this.inventory = this.table('inventory');
+    this.inventoryLosses = this.table("inventoryLosses");
     this.stockMovement = this.table('stockMovement');
     this.sales = this.table('sales');
     this.purchases = this.table('purchases');

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins } from "lucide-react";
+import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Home", icon: Home, isAction: false as const },
@@ -19,6 +19,7 @@ const addActions = [
   { href: "/orders", label: "Record Sale", icon: ShoppingCart },
   { href: "/purchases", label: "Add Supplier / Purchase", icon: Truck },
   { href: "/stock-movement", label: "Stock Movement", icon: ArrowUpDown },
+  { href: "/loss-wastage", label: "Loss / Wastage", icon: AlertTriangle },
   { href: "/expenses", label: "Add Expense", icon: Receipt },
   { href: "/customers", label: "Add Customer", icon: Users },
   { href: "/suppliers", label: "Add Supplier", icon: Truck },

@@ -38,6 +38,7 @@ export const sidebarGroups: SidebarGroupConfig[] = [
     items: [
       { id: "items", label: "Items", href: "/inventory", icon: Package },
       { id: "stockMovement", label: "Stock Movement", href: "/stock-movement", icon: ArrowUpDown },
+      { id: "lossWastage", label: "Loss / Wastage", href: "/loss-wastage", icon: AlertTriangle },
     ],
   },
   {
