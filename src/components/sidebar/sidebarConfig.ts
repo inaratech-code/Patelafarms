@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   Package,
   ArrowUpDown,
+  AlertTriangle,
   ShoppingCart,
   HandCoins,
   Truck,

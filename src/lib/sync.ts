@@ -1,14 +1,43 @@
 "use client";
 
-import { db, type SyncEvent } from "@/lib/db";
+import {
+  db,
+  type DayBookEntry,
+  type FinancialAccount,
+  type InventoryItem,
+  type LedgerAccount,
+  type Payment,
+  type Purchase,
+  type Sale,
+  type StockMovement,
+  type SyncEvent,
+  type SyncEventOp,
+} from "@/lib/db";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getSyncState, setSyncState } from "@/lib/syncState";
 import { ensureFarm, getFarmId } from "@/lib/farm";
 
+type AnyRecord = Record<string, unknown>;
+
+function asRecord(v: unknown): AnyRecord | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  return v as AnyRecord;
+}
+function asArray(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
+}
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+function asNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
 function toSupabaseRow(e: SyncEvent) {
+  const payload = (e.payload ?? null) as Record<string, unknown> | null;
   return {
     id: e.id,
-    farm_id: (e.payload?.farmId as string | undefined) ?? getFarmId(),
+    farm_id: (payload?.farmId as string | undefined) ?? getFarmId(),
     device_id: e.deviceId,
     created_at: e.createdAt,
     entity_type: e.entityType,
@@ -18,15 +47,16 @@ function toSupabaseRow(e: SyncEvent) {
   };
 }
 
-function fromSupabaseRow(r: any): SyncEvent {
+function fromSupabaseRow(r: unknown): SyncEvent {
+  const row = asRecord(r) ?? {};
   return {
-    id: String(r.id),
-    deviceId: String(r.device_id),
-    createdAt: String(r.created_at),
-    entityType: String(r.entity_type),
-    entityId: String(r.entity_id),
-    op: r.op,
-    payload: r.payload,
+    id: String(row.id ?? ""),
+    deviceId: String(row.device_id ?? ""),
+    createdAt: String(row.created_at ?? ""),
+    entityType: String(row.entity_type ?? ""),
+    entityId: String(row.entity_id ?? ""),
+    op: row.op as SyncEventOp,
+    payload: row.payload,
   };
 }
 
@@ -34,7 +64,7 @@ export async function pushOutbox() {
   const supabase = getSupabaseClient();
   await ensureSupabaseAuth();
   await ensureFarm();
-  const pending = await db.outbox.where("pushedAt").equals(undefined as any).toArray();
+  const pending = await db.outbox.where("pushedAt").equals(undefined as unknown as string).toArray();
   if (pending.length === 0) return { pushed: 0 };
 
   // Insert in chunks to avoid large payloads.
@@ -90,28 +120,35 @@ export async function applyEvents(events: SyncEvent[]) {
     for (const e of events) {
       if (existing.has(e.id)) continue;
 
-      const ensureFinancialAccountIdByUid = async (account: any | null | undefined) => {
-        if (!account?.uid) return undefined;
-        const found = await db.financialAccounts.where("uid").equals(account.uid).first();
+      const ensureFinancialAccountIdByUid = async (account: unknown) => {
+        const a = asRecord(account);
+        const uid = a ? asString(a.uid) : undefined;
+        if (!uid) return undefined;
+        const found = await db.financialAccounts.where("uid").equals(uid).first();
         if (typeof found?.id === "number") return found.id;
+        const type = a?.type === "Bank" || a?.type === "QR" ? (a.type as FinancialAccount["type"]) : "Cash";
         const id = await db.financialAccounts.add({
-          uid: account.uid,
-          name: String(account.name ?? "Account"),
-          type: account.type === "Bank" || account.type === "QR" ? account.type : "Cash",
-        } as any);
-        return id as any;
+          uid,
+          name: String(a?.name ?? "Account"),
+          type,
+        } satisfies Omit<FinancialAccount, "id">);
+        return id;
       };
 
-      const ensureLedgerAccountIdByUid = async (account: any | null | undefined) => {
-        if (!account?.uid) return undefined;
-        const found = await db.ledgerAccounts.where("uid").equals(account.uid).first();
+      const ensureLedgerAccountIdByUid = async (account: unknown) => {
+        const a = asRecord(account);
+        const uid = a ? asString(a.uid) : undefined;
+        if (!uid) return undefined;
+        const found = await db.ledgerAccounts.where("uid").equals(uid).first();
         if (typeof found?.id === "number") return found.id;
+        const type =
+          a?.type === "Supplier" || a?.type === "Worker" ? (a.type as LedgerAccount["type"]) : "Customer";
         const id = await db.ledgerAccounts.add({
-          uid: account.uid,
-          name: String(account.name ?? "Party"),
-          type: account.type === "Supplier" || account.type === "Worker" ? account.type : "Customer",
-        } as any);
-        return id as any;
+          uid,
+          name: String(a?.name ?? "Party"),
+          type,
+        } satisfies Omit<LedgerAccount, "id">);
+        return id;
       };
 
       const addLedgerEntryWithBalance = async (params: {
@@ -141,148 +178,172 @@ export async function applyEvents(events: SyncEvent[]) {
       };
 
       // Apply minimal event types we currently emit.
+      const payload = asRecord(e.payload);
       if (e.entityType === "inventory.item" && e.op === "create") {
-        const item = e.payload?.item;
-        if (item?.uid) {
-          const found = await db.inventory.where("uid").equals(item.uid).first();
-          if (!found) await db.inventory.add(item);
+        const item = asRecord(payload?.item);
+        const uid = item ? asString(item.uid) : undefined;
+        if (uid) {
+          const found = await db.inventory.where("uid").equals(uid).first();
+          if (!found) await db.inventory.add(item as unknown as Omit<InventoryItem, "id">);
         }
       }
       if (e.entityType === "daybook.entry" && e.op === "create") {
-        const entry = e.payload?.entry;
-        if (entry?.uid) {
-          const found = await db.dayBook.where("uid").equals(entry.uid).first();
+        const entry = asRecord(payload?.entry);
+        const uid = entry ? asString(entry.uid) : undefined;
+        if (uid && entry) {
+          const found = await db.dayBook.where("uid").equals(uid).first();
           if (!found) {
             const accountId = await ensureFinancialAccountIdByUid(entry.account);
-            const row = { ...entry };
+            const row: AnyRecord = { ...entry };
             if (typeof accountId === "number") row.accountId = accountId;
             delete row.account;
-            await db.dayBook.add(row);
+            await db.dayBook.add(row as unknown as Omit<DayBookEntry, "id">);
           }
         }
       }
       if (e.entityType === "ledger.entry" && e.op === "create") {
-        const account = e.payload?.account;
-        const entry = e.payload?.entry;
-        if (account?.uid && entry?.uid) {
+        const account = asRecord(payload?.account);
+        const entry = asRecord(payload?.entry);
+        const aUid = account ? asString(account.uid) : undefined;
+        const eUid = entry ? asString(entry.uid) : undefined;
+        if (aUid && eUid && entry) {
           const accountId = await ensureLedgerAccountIdByUid(account);
           if (typeof accountId === "number") {
             await addLedgerEntryWithBalance({
-              uid: entry.uid,
+              uid: eUid,
               accountId,
-              date: String(entry.date),
+              date: String(entry.date ?? ""),
               description: String(entry.description ?? ""),
-              debit: Number(entry.debit ?? 0),
-              credit: Number(entry.credit ?? 0),
+              debit: Number(entry.debit ?? 0) || 0,
+              credit: Number(entry.credit ?? 0) || 0,
             });
           }
         }
       }
       if (e.entityType === "daybook.expense" && e.op === "create") {
-        const entry = e.payload?.entry;
-        if (entry?.uid) {
-          const found = await db.dayBook.where("uid").equals(entry.uid).first();
-          if (!found) await db.dayBook.add(entry);
+        const entry = asRecord(payload?.entry);
+        const uid = entry ? asString(entry.uid) : undefined;
+        if (uid) {
+          const found = await db.dayBook.where("uid").equals(uid).first();
+          if (!found) await db.dayBook.add(entry as unknown as Omit<DayBookEntry, "id">);
         }
       }
       if (e.entityType === "payment.posted" && e.op === "create") {
-        const payment = e.payload?.payment;
-        if (payment?.uid) {
-          const found = await db.payments.where("uid").equals(payment.uid).first();
-          if (!found) await db.payments.add(payment);
+        const payment = asRecord(payload?.payment);
+        const pUid = payment ? asString(payment.uid) : undefined;
+        if (pUid) {
+          const found = await db.payments.where("uid").equals(pUid).first();
+          if (!found) await db.payments.add(payment as unknown as Omit<Payment, "id">);
         }
         // DayBook row is included in payload for payments.
-        const dayBookUid = e.payload?.dayBookUid;
-        const dayBookRow = e.payload?.payment && dayBookUid ? { uid: dayBookUid, ...e.payload.payment.dayBook } : null;
-        if (dayBookRow?.uid) {
-          const found = await db.dayBook.where("uid").equals(dayBookRow.uid).first();
-          if (!found) await db.dayBook.add(dayBookRow as any);
+        const dayBookUid = asString(payload?.dayBookUid);
+        const dayBookObj = payment ? asRecord(payment.dayBook) : undefined;
+        const dayBookRow = dayBookUid && dayBookObj ? ({ uid: dayBookUid, ...dayBookObj } as AnyRecord) : undefined;
+        const dbUid = dayBookRow ? asString(dayBookRow.uid) : undefined;
+        if (dbUid) {
+          const found = await db.dayBook.where("uid").equals(dbUid).first();
+          if (!found) await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
         }
       }
       if (e.entityType === "ledger.account" && e.op === "create") {
-        const account = e.payload?.account;
-        if (account?.uid) {
-          const found = await db.ledgerAccounts.where("uid").equals(account.uid).first();
-          if (!found) await db.ledgerAccounts.add(account);
+        const account = asRecord(payload?.account);
+        const uid = account ? asString(account.uid) : undefined;
+        if (uid) {
+          const found = await db.ledgerAccounts.where("uid").equals(uid).first();
+          if (!found) await db.ledgerAccounts.add(account as unknown as Omit<LedgerAccount, "id">);
         }
       }
       if (e.entityType === "stock.movement" && e.op === "create") {
-        const movement = e.payload?.movement;
-        if (movement?.uid) {
-          const found = await db.stockMovement.where("uid").equals(movement.uid).first();
-          if (!found) await db.stockMovement.add(movement);
+        const movement = asRecord(payload?.movement);
+        const uid = movement ? asString(movement.uid) : undefined;
+        if (uid) {
+          const found = await db.stockMovement.where("uid").equals(uid).first();
+          if (!found) await db.stockMovement.add(movement as unknown as Omit<StockMovement, "id">);
         }
       }
       if (e.entityType === "order.sale" && e.op === "create") {
-        const sale = e.payload?.sale;
-        if (sale?.uid) {
-          const found = await db.sales.where("uid").equals(sale.uid).first();
+        const sale = asRecord(payload?.sale);
+        const uid = sale ? asString(sale.uid) : undefined;
+        if (uid && sale) {
+          const found = await db.sales.where("uid").equals(uid).first();
           if (!found) {
-            const itemUid = sale.itemUid;
-            let itemId = sale.itemId;
+            const itemUid = asString(sale.itemUid);
+            let itemId = asNumber(sale.itemId);
             if (itemUid) {
               const inv = await db.inventory.where("uid").equals(itemUid).first();
               if (inv?.id) itemId = inv.id;
             }
-            await db.sales.add({ ...sale, itemId });
+            await db.sales.add({ ...(sale as AnyRecord), itemId: itemId ?? 0 } as unknown as Omit<Sale, "id">);
           }
         }
-        const movement = e.payload?.movement;
-        if (movement?.uid) {
-          const found = await db.stockMovement.where("uid").equals(movement.uid).first();
+        const movement = asRecord(payload?.movement);
+        const mUid = movement ? asString(movement.uid) : undefined;
+        if (mUid && movement) {
+          const found = await db.stockMovement.where("uid").equals(mUid).first();
           if (!found) {
-            const itemUid = movement.itemUid;
-            let itemId = movement.itemId;
+            const itemUid = asString(movement.itemUid);
+            let itemId = asNumber(movement.itemId);
             if (itemUid) {
               const inv = await db.inventory.where("uid").equals(itemUid).first();
               if (inv?.id) itemId = inv.id;
             }
-            await db.stockMovement.add({ ...movement, itemId });
+            await db.stockMovement.add({ ...(movement as AnyRecord), itemId: itemId ?? 0 } as unknown as Omit<StockMovement, "id">);
           }
         }
 
-        const invDelta = e.payload?.inventoryDelta;
-        if (invDelta?.itemUid && typeof invDelta.delta === "number") {
-          const inv = await db.inventory.where("uid").equals(invDelta.itemUid).first();
+        const invDelta = asRecord(payload?.inventoryDelta);
+        const itemUid = invDelta ? asString(invDelta.itemUid) : undefined;
+        const delta = invDelta ? asNumber(invDelta.delta) : undefined;
+        if (itemUid && typeof delta === "number") {
+          const inv = await db.inventory.where("uid").equals(itemUid).first();
           if (inv?.id) {
-            await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + invDelta.delta });
+            await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
           }
         }
       }
       if (e.entityType === "order.purchase" && e.op === "create") {
-        const purchases = Array.isArray(e.payload?.purchases) ? e.payload.purchases : [];
-        const movements = Array.isArray(e.payload?.movements) ? e.payload.movements : [];
-        const deltas = Array.isArray(e.payload?.inventoryDeltas) ? e.payload.inventoryDeltas : [];
+        const purchasesArr = asArray(payload?.purchases);
+        const movementsArr = asArray(payload?.movements);
+        const deltasArr = asArray(payload?.inventoryDeltas);
 
-        for (const p of purchases) {
-          if (!p?.uid) continue;
-          const found = await db.purchases.where("uid").equals(p.uid).first();
+        for (const raw of purchasesArr) {
+          const p = asRecord(raw);
+          const uid = p ? asString(p.uid) : undefined;
+          if (!uid) continue;
+          const found = await db.purchases.where("uid").equals(uid).first();
           if (found) continue;
-          let itemId = p.itemId;
-          if (p.itemUid) {
-            const inv = await db.inventory.where("uid").equals(p.itemUid).first();
+          let itemId = p ? asNumber(p.itemId) : undefined;
+          const itemUid = p ? asString(p.itemUid) : undefined;
+          if (itemUid) {
+            const inv = await db.inventory.where("uid").equals(itemUid).first();
             if (inv?.id) itemId = inv.id;
           }
-          await db.purchases.add({ ...p, itemId });
+          await db.purchases.add({ ...(p as AnyRecord), itemId: itemId ?? 0 } as unknown as Omit<Purchase, "id">);
         }
 
-        for (const m of movements) {
-          if (!m?.uid) continue;
-          const found = await db.stockMovement.where("uid").equals(m.uid).first();
+        for (const raw of movementsArr) {
+          const m = asRecord(raw);
+          const uid = m ? asString(m.uid) : undefined;
+          if (!uid) continue;
+          const found = await db.stockMovement.where("uid").equals(uid).first();
           if (found) continue;
-          let itemId = m.itemId;
-          if (m.itemUid) {
-            const inv = await db.inventory.where("uid").equals(m.itemUid).first();
+          let itemId = m ? asNumber(m.itemId) : undefined;
+          const itemUid = m ? asString(m.itemUid) : undefined;
+          if (itemUid) {
+            const inv = await db.inventory.where("uid").equals(itemUid).first();
             if (inv?.id) itemId = inv.id;
           }
-          await db.stockMovement.add({ ...m, itemId });
+          await db.stockMovement.add({ ...(m as AnyRecord), itemId: itemId ?? 0 } as unknown as Omit<StockMovement, "id">);
         }
 
-        for (const d of deltas) {
-          if (!d?.itemUid || typeof d.delta !== "number") continue;
-          const inv = await db.inventory.where("uid").equals(d.itemUid).first();
+        for (const raw of deltasArr) {
+          const d = asRecord(raw);
+          const itemUid = d ? asString(d.itemUid) : undefined;
+          const delta = d ? asNumber(d.delta) : undefined;
+          if (!itemUid || typeof delta !== "number") continue;
+          const inv = await db.inventory.where("uid").equals(itemUid).first();
           if (inv?.id) {
-            await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + d.delta });
+            await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
           }
         }
       }
