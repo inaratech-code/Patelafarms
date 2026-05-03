@@ -183,11 +183,34 @@ function fromSupabaseRow(r: unknown): SyncEvent {
   };
 }
 
+/** Push Dexie password hashes to farm_cloud_logins so new devices can sign in with the same password. */
+async function publishAllFarmCloudLoginsFromDexie() {
+  try {
+    const farmId = getFarmId();
+    if (!farmId) return;
+    const supabase = getSupabaseClient();
+    for (const u of await db.users.toArray()) {
+      const name = u.username?.trim();
+      const h = u.passwordHash?.trim();
+      if (!name || !h) continue;
+      const { error } = await supabase.rpc("upsert_farm_cloud_login", {
+        p_farm_id: farmId,
+        p_username: name,
+        p_password_hash: h,
+      });
+      if (error) console.warn("upsert_farm_cloud_login", name, error.message);
+    }
+  } catch {
+    /* offline or RPC not deployed */
+  }
+}
+
 export async function pushOutbox() {
   const supabase = getSupabaseClient();
   await ensureSupabaseAuth();
   await ensureFarm();
   await enqueueRoleUserOutboxBackfillOnce();
+  await publishAllFarmCloudLoginsFromDexie();
   // Dexie rejects .equals(undefined); pending rows have no pushedAt (or empty).
   const pending = await db.outbox.filter((e) => !e.pushedAt).toArray();
   if (pending.length === 0) return { pushed: 0 };

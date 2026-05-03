@@ -56,22 +56,33 @@ export function LoginClient() {
     }
     try {
       setIsWorking(true);
+      await ensureSupabaseAuth();
+      const hash = await sha256Base64(password);
+      let linkedFarmId: string | null = null;
       try {
-        await ensureSupabaseAuth();
-        const hash = await sha256Base64(password);
-        const linked = await linkFarmWithCredentialsIfPossible(username, hash);
-        if (linked) await pullEvents();
-      } catch {
-        /* offline or Supabase missing — continue with local login only */
+        linkedFarmId = await linkFarmWithCredentialsIfPossible(username, hash);
+      } catch (e) {
+        console.warn("Credential link:", e);
+      }
+      if (linkedFarmId) {
+        await pullEvents();
+        const userCount = await db.users.count();
+        if (userCount === 0) {
+          throw new Error(
+            "You were linked to the farm, but no user records arrived. On your main device open Settings → Sync now (push). In Supabase, run farm_cloud_logins.sql if you have not. You can also use Advanced → Farm ID + join code."
+          );
+        }
       }
       await loginWithPassword({ username, password });
       const next = search.get("next") ?? "/";
       window.location.replace(next);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed";
-      if (msg === "User not found" && !hasUsers) {
+      if (msg === "User not found") {
         setError(
-          "No account on this browser yet. Use the same username and password you already use on another device (internet required once), or create a user below."
+          hasUsers
+            ? "No user matches that username (check spelling). Password login across devices needs Supabase: run farm_cloud_logins.sql, then on a device that already has this user open Settings → Sync once."
+            : "No account on this browser yet. Run supabase/farm_cloud_logins.sql in Supabase, then on your main device use Settings → Sync once so your username/password are registered. Then try again here (same username and password), or use Advanced → join code."
         );
       } else {
         setError(msg);

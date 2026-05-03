@@ -1,4 +1,5 @@
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
+import { setSyncState } from "@/lib/syncState";
 
 type PostgrestLikeError = {
   message?: string;
@@ -36,6 +37,15 @@ function formatFarmDbError(prefix: string, err: unknown): string {
   ) {
     return `${prefix}: ${msg} — SQL Editor: run supabase/fix_is_farm_member_rls_recursion.sql (RLS recursion on is_farm_member). See README “Supabase”.`;
   }
+  if (
+    lower.includes("link_farm_with_credentials") ||
+    lower.includes("upsert_farm_cloud_login") ||
+    lower.includes("delete_farm_cloud_login")
+  ) {
+    if (code === "42883" || lower.includes("does not exist")) {
+      return `${prefix}: ${msg} — SQL Editor: run supabase/farm_cloud_logins.sql. See README “Supabase”.`;
+    }
+  }
   return `${prefix}: ${msg}`;
 }
 
@@ -55,7 +65,10 @@ export function getFarmId() {
 
 export function setFarmId(id: string) {
   if (typeof window === "undefined") return;
+  const prev = localStorage.getItem(FARM_ID_KEY);
   localStorage.setItem(FARM_ID_KEY, id);
+  // New farm id must not reuse lastPulledAt from another farm, or pulls skip older events (empty users).
+  if (prev !== id) setSyncState({});
 }
 
 export async function ensureFarm() {
@@ -168,9 +181,9 @@ export async function linkFarmWithCredentialsIfPossible(
     console.warn("link_farm_with_credentials:", error.message);
     return null;
   }
-  if (data == null || typeof data !== "string") return null;
-  const farmId = String(data);
-  if (!farmId) return null;
+  if (data == null) return null;
+  const farmId = String(data).trim();
+  if (!farmId || farmId === "null" || farmId === "undefined") return null;
   setFarmId(farmId);
   return farmId;
 }
