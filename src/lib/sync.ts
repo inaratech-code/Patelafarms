@@ -64,7 +64,8 @@ export async function pushOutbox() {
   const supabase = getSupabaseClient();
   await ensureSupabaseAuth();
   await ensureFarm();
-  const pending = await db.outbox.where("pushedAt").equals(undefined as unknown as string).toArray();
+  // Dexie rejects .equals(undefined); pending rows have no pushedAt (or empty).
+  const pending = await db.outbox.filter((e) => !e.pushedAt).toArray();
   if (pending.length === 0) return { pushed: 0 };
 
   // Insert in chunks to avoid large payloads.
