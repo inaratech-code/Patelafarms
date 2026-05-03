@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, UserPlus, Trash2, ShieldPlus, X } from "lucide-react";
+import { Users, UserPlus, Trash2, ShieldPlus, X, Eye, EyeOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
@@ -123,6 +123,7 @@ export default function UsersPage() {
 
   const [showCreateRole, setShowCreateRole] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showUserPassword, setShowUserPassword] = useState({ password: false, confirm: false });
 
   const [roleForm, setRoleForm] = useState({
     name: "",
@@ -149,6 +150,10 @@ export default function UsersPage() {
     if (!firstRoleId) return;
     setUserForm((v) => (v.roleId ? v : { ...v, roleId: firstRoleId }));
   }, [firstRoleId]);
+
+  useEffect(() => {
+    if (!showCreateUser) setShowUserPassword({ password: false, confirm: false });
+  }, [showCreateUser]);
 
   const selectedRole = roleById.get(userForm.roleId);
   const isAdminRole = selectedRole?.name?.toLowerCase?.() === "admin";
@@ -447,30 +452,52 @@ export default function UsersPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Password *</label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="4-20 characters"
-                    value={userForm.password}
-                    onChange={(e) => setUserForm((v) => ({ ...v, password: e.target.value }))}
-                    minLength={4}
-                    maxLength={20}
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showUserPassword.password ? "text" : "password"}
+                      className="w-full rounded-md border border-slate-200 bg-white pl-3 pr-11 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="4-20 characters"
+                      value={userForm.password}
+                      onChange={(e) => setUserForm((v) => ({ ...v, password: e.target.value }))}
+                      minLength={4}
+                      maxLength={20}
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUserPassword((s) => ({ ...s, password: !s.password }))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={showUserPassword.password ? "Hide password" : "Show password"}
+                    >
+                      {showUserPassword.password ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.password.length, 20)}/20</div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Confirm Password *</label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="Re-enter password"
-                    value={userForm.confirmPassword}
-                    onChange={(e) => setUserForm((v) => ({ ...v, confirmPassword: e.target.value }))}
-                    minLength={4}
-                    maxLength={20}
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showUserPassword.confirm ? "text" : "password"}
+                      className="w-full rounded-md border border-slate-200 bg-white pl-3 pr-11 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="Re-enter password"
+                      value={userForm.confirmPassword}
+                      onChange={(e) => setUserForm((v) => ({ ...v, confirmPassword: e.target.value }))}
+                      minLength={4}
+                      maxLength={20}
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUserPassword((s) => ({ ...s, confirm: !s.confirm }))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={showUserPassword.confirm ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showUserPassword.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.confirmPassword.length, 20)}/20</div>
                 </div>
               </div>
