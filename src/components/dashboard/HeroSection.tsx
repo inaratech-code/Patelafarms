@@ -174,7 +174,7 @@ export function HeroSection(props: { isOnline: boolean }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:max-w-md lg:shrink-0">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full lg:max-w-md lg:shrink-0">
           <div className="rounded-xl border border-[#e2e8f0] bg-white/80 p-2.5 sm:p-3">
             <div className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-[#64748b]">
               <CalendarDays className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />

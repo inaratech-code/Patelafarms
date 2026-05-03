@@ -49,7 +49,7 @@ export default function AlertsPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Alerts & Notifications</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 lg:gap-6 min-w-0">
         <div className="rounded-xl bg-white shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
             <div>

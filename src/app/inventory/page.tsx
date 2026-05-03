@@ -110,7 +110,7 @@ export default function InventoryPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Item Name</label>
             <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
@@ -141,7 +141,7 @@ export default function InventoryPage() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Unit</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <select
                 value={unitMode === "custom" ? "__custom__" : formData.unit}
                 onChange={(e) => {
@@ -226,7 +226,7 @@ export default function InventoryPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {items.map((item) => {
             const t = resolveItemType(item);
             const tb = typeBadge(t);

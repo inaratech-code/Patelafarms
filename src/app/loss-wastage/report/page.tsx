@@ -69,7 +69,7 @@ export default function LossReportPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
           <div className="text-sm text-slate-500 font-medium">Total Value Lost</div>
           <div className="mt-2 text-2xl font-semibold text-slate-900">Rs. {totals.total.toLocaleString()}</div>
@@ -84,7 +84,7 @@ export default function LossReportPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 lg:gap-6 min-w-0">
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-200">
             <div className="text-lg font-semibold text-slate-900">By Category</div>

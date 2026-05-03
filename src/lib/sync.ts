@@ -221,16 +221,38 @@ export async function pushOutbox() {
   for (let i = 0; i < pending.length; i += chunkSize) {
     const chunk = pending.slice(i, i + chunkSize);
     const rows = chunk.map(toSupabaseRow);
-    const { error } = await supabase.from("events").insert(rows);
-    if (error) throw error;
-
     const nowIso = new Date().toISOString();
-    await db.transaction("rw", db.outbox, async () => {
+    const { error } = await supabase.from("events").insert(rows);
+    if (error) {
+      const code = (error as { code?: string }).code;
+      const msg = String(error.message ?? "");
+      const isDup = code === "23505" || msg.includes("duplicate key") || msg.includes("events_pkey");
+      if (!isDup) throw error;
+      // One duplicate in a batch fails the whole insert; flush row-by-row so the rest still sync.
       for (const e of chunk) {
-        await db.outbox.update(e.id, { pushedAt: nowIso });
+        const { error: rowErr } = await supabase.from("events").insert([toSupabaseRow(e)]);
+        if (!rowErr) {
+          await db.outbox.update(e.id, { pushedAt: nowIso });
+          pushed += 1;
+          continue;
+        }
+        const rc = (rowErr as { code?: string }).code;
+        const rm = String(rowErr.message ?? "");
+        if (rc === "23505" || rm.includes("duplicate key") || rm.includes("events_pkey")) {
+          await db.outbox.update(e.id, { pushedAt: nowIso });
+          pushed += 1;
+        } else {
+          throw rowErr;
+        }
       }
-    });
-    pushed += chunk.length;
+    } else {
+      await db.transaction("rw", db.outbox, async () => {
+        for (const e of chunk) {
+          await db.outbox.update(e.id, { pushedAt: nowIso });
+        }
+      });
+      pushed += chunk.length;
+    }
   }
 
   return { pushed };
@@ -515,7 +537,8 @@ export async function applyEvents(events: SyncEvent[]) {
         }
       }
 
-      await db.outbox.add({ ...e, appliedAt: nowIso, pushedAt: e.pushedAt });
+      // Mark as already on server so pushOutbox does not re-insert (duplicate events_pkey).
+      await db.outbox.add({ ...e, appliedAt: nowIso, pushedAt: e.pushedAt ?? e.createdAt });
       existing.add(e.id);
     }
   });

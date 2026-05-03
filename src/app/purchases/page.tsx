@@ -276,7 +276,7 @@ export default function PurchasesPage() {
       {showForm && (
         <form
           onSubmit={handlePurchaseSubmit}
-          className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
+          className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-2 lg:grid-cols-5 gap-4"
         >
           <div className="lg:col-span-2">
             <label className="block text-sm font-medium mb-1">Supplier</label>

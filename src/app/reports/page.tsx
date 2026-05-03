@@ -125,7 +125,7 @@ export default function ReportsPage() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Daily summary ({todayKey})</h2>
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+        <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
           <ReportStat label="Sales" value={daily.salesToday} />
           <ReportStat label="Purchases" value={daily.purchasesToday} />
           <ReportStat label="Day-book expenses" value={daily.expensesToday} />
@@ -153,7 +153,7 @@ export default function ReportsPage() {
         <p className="mt-1 text-xs text-slate-500">Σ quantity × average cost (falls back to cost price).</p>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 lg:gap-6 min-w-0">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Feed consumption (recent)</h2>
           <ul className="mt-4 divide-y divide-slate-100 text-sm">

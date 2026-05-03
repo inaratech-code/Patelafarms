@@ -33,6 +33,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 
 5. Reload the app, then use **Settings → Sync**. Sign in once on the primary device so your password is registered for other browsers; new devices use **Login** with the same username and password (internet required for that first sign-in).
 
+If you previously saw **duplicate key … events_pkey** on sync, update the app and sync again; pulled events are no longer re-pushed to Supabase.
+
 ### If sync still fails after the above
 
 - Confirm `.env.local` points at the **same** Supabase project where you ran the SQL.
