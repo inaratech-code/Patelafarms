@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { loginWithPassword, getSession } from "@/lib/auth";
-import { joinFarmWithCode, getFarmId } from "@/lib/farm";
+import { loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
+import { joinFarmWithCode, getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
 import { pullEvents } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
@@ -48,13 +48,34 @@ export function LoginClient() {
     e.preventDefault();
     if (isWorking) return;
     setError(null);
+    const username = form.username.trim();
+    const password = form.password;
+    if (!username || !password) {
+      setError("Username and password are required.");
+      return;
+    }
     try {
       setIsWorking(true);
-      await loginWithPassword({ username: form.username, password: form.password });
+      try {
+        await ensureSupabaseAuth();
+        const hash = await sha256Base64(password);
+        const linked = await linkFarmWithCredentialsIfPossible(username, hash);
+        if (linked) await pullEvents();
+      } catch {
+        /* offline or Supabase missing — continue with local login only */
+      }
+      await loginWithPassword({ username, password });
       const next = search.get("next") ?? "/";
       window.location.replace(next);
-    } catch (err: any) {
-      setError(err?.message ?? "Login failed");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Login failed";
+      if (msg === "User not found" && !hasUsers) {
+        setError(
+          "No account on this browser yet. Use the same username and password you already use on another device (internet required once), or create a user below."
+        );
+      } else {
+        setError(msg);
+      }
     } finally {
       setIsWorking(false);
     }
@@ -69,7 +90,7 @@ export function LoginClient() {
       await joinFarmWithCode(linkFarmId.trim(), linkCode.trim());
       await ensureSupabaseAuth();
       await pullEvents();
-      setLinkMsg("This device is linked. Use your username and password below.");
+      setLinkMsg("Linked. You can sign in below with your username and password.");
       setLinkCode("");
     } catch (err: unknown) {
       setLinkMsg(err instanceof Error ? err.message : "Could not link this device.");
@@ -88,22 +109,19 @@ export function LoginClient() {
         <form onSubmit={onSubmit} className="p-8 space-y-4">
           {!hasUsers ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-3">
-              <p className="font-semibold">First-time setup</p>
+              <p className="font-semibold">New browser?</p>
               <p>
-                <strong className="text-amber-950">You cannot use Login yet</strong> — there is no account on this
-                browser. Create one first (takes about a minute).
+                Sign in with the <strong className="text-amber-950">same username and password</strong> you use on your
+                other device (stay online for the first sign-in so we can load your farm). Username matching is
+                case-insensitive.
               </p>
-              <Link
-                href="/users"
-                className="flex w-full items-center justify-center rounded-lg bg-primary px-4 py-3 text-base font-semibold text-white shadow-sm hover:bg-primary/90"
-              >
-                Create your first user (open Users)
-              </Link>
-              <p className="text-xs text-amber-950/80">Then come back to this page and sign in.</p>
-              <ol className="list-decimal list-inside space-y-1 pl-0.5 text-xs border-t border-amber-200/80 pt-2">
-                <li>On Users: create a role if needed (e.g. admin), then create a user (password 4–20 characters).</li>
-                <li>Return here and use Login with that username and password.</li>
-              </ol>
+              <p className="text-xs border-t border-amber-200/80 pt-2">
+                Or set up from scratch: create a role and user on{" "}
+                <Link href="/users" className="font-semibold text-primary underline">
+                  Users
+                </Link>
+                , then return here.
+              </p>
             </div>
           ) : null}
 
@@ -148,24 +166,33 @@ export function LoginClient() {
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
           ) : null}
 
+          <button
+            type="submit"
+            disabled={isWorking}
+            className={`w-full mt-2 px-4 py-2 rounded-md text-white font-semibold ${
+              isWorking ? "bg-slate-400" : "bg-primary hover:bg-primary/90"
+            }`}
+          >
+            {isWorking ? "Signing in..." : "Login"}
+          </button>
+
           <details className="rounded-xl border border-slate-200 bg-slate-50/90 text-sm open:pb-3">
             <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-slate-800">
-              Same farm on another phone or browser?
+              Advanced: link with Farm ID and join code
             </summary>
             <div className="px-4 space-y-3 border-t border-slate-200/80 pt-3 text-slate-600">
-              <p>
-                Each browser has its own cloud login until you link it. On a device that already has your data, open{" "}
-                <strong className="text-slate-900">Settings</strong> and copy the <strong className="text-slate-900">Farm ID</strong>{" "}
-                and <strong className="text-slate-900">Join code</strong>, then paste them here and link.
+              <p className="text-xs">
+                Optional fallback if password linking is not set up in Supabase yet. Copy values from{" "}
+                <strong className="text-slate-900">Settings</strong> on a device that is already on the farm.
               </p>
               <form onSubmit={onLinkDevice} className="space-y-2">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Farm ID (UUID)</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Farm ID</label>
                   <input
                     value={linkFarmId}
                     onChange={(e) => setLinkFarmId(e.target.value)}
                     className="w-full px-3 py-2 border rounded-md bg-white font-mono text-xs"
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    placeholder="UUID"
                     autoComplete="off"
                   />
                 </div>
@@ -190,7 +217,7 @@ export function LoginClient() {
               {linkMsg ? (
                 <div
                   className={`rounded-lg px-3 py-2 text-xs ${
-                    linkMsg.startsWith("This device is linked")
+                    linkMsg.startsWith("Linked.")
                       ? "border border-emerald-200 bg-emerald-50 text-emerald-900"
                       : "border border-rose-200 bg-rose-50 text-rose-800"
                   }`}
@@ -200,24 +227,8 @@ export function LoginClient() {
               ) : null}
             </div>
           </details>
-
-          <button
-            type="submit"
-            disabled={isWorking || !hasUsers}
-            className={`w-full mt-2 px-4 py-2 rounded-md text-white font-semibold ${
-              isWorking || !hasUsers ? "bg-slate-400" : "bg-primary hover:bg-primary/90"
-            }`}
-          >
-            {isWorking ? "Signing in..." : "Login"}
-          </button>
-          {!hasUsers ? (
-            <p className="text-center text-xs text-slate-500">
-              Login stays disabled until at least one user exists. Use the blue button above.
-            </p>
-          ) : null}
         </form>
       </div>
     </div>
   );
 }
-

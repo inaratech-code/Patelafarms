@@ -144,3 +144,70 @@ export async function joinFarmWithCode(farmId: string, code: string) {
   return id;
 }
 
+/**
+ * If Supabase has a cloud login row for this username + password hash, join that farm
+ * for the current anonymous user and return the farm id. Otherwise returns null.
+ * Does not call ensureFarm (avoid creating a stray farm before link).
+ */
+export async function linkFarmWithCredentialsIfPossible(
+  username: string,
+  passwordHashB64: string
+): Promise<string | null> {
+  let supabase;
+  try {
+    supabase = getSupabaseClient();
+  } catch {
+    return null;
+  }
+  await ensureSupabaseAuth();
+  const { data, error } = await supabase.rpc("link_farm_with_credentials", {
+    p_username: username.trim(),
+    p_password_hash: passwordHashB64.trim(),
+  });
+  if (error) {
+    console.warn("link_farm_with_credentials:", error.message);
+    return null;
+  }
+  if (data == null || typeof data !== "string") return null;
+  const farmId = String(data);
+  if (!farmId) return null;
+  setFarmId(farmId);
+  return farmId;
+}
+
+/** Register this username + password hash for password-based linking on other devices. */
+export async function publishFarmCloudLogin(username: string, passwordHashB64: string) {
+  let supabase;
+  try {
+    supabase = getSupabaseClient();
+  } catch {
+    return;
+  }
+  await ensureSupabaseAuth();
+  const farmId = getFarmId();
+  if (!farmId) return;
+  const { error } = await supabase.rpc("upsert_farm_cloud_login", {
+    p_farm_id: farmId,
+    p_username: username.trim(),
+    p_password_hash: passwordHashB64.trim(),
+  });
+  if (error) console.warn("upsert_farm_cloud_login:", error.message);
+}
+
+export async function deleteFarmCloudLogin(username: string) {
+  let supabase;
+  try {
+    supabase = getSupabaseClient();
+  } catch {
+    return;
+  }
+  await ensureSupabaseAuth();
+  const farmId = getFarmId();
+  if (!farmId) return;
+  const { error } = await supabase.rpc("delete_farm_cloud_login", {
+    p_farm_id: farmId,
+    p_username: username.trim(),
+  });
+  if (error) console.warn("delete_farm_cloud_login:", error.message);
+}
+

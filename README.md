@@ -23,6 +23,7 @@ Open `http://localhost:3000`.
    - **`supabase/fix_farms_rls_v2.sql`** (required if you see *“new row violates row-level security policy for table farms”* — fixes `farms` / `farm_members` policies and grants for the `authenticated` role.)
    - **`supabase/join_farm.sql`** (adds `join_code` on farms + `join_farm()` RPC so a second browser can join the same farm and sync users/data.)
    - **`supabase/fix_is_farm_member_rls_recursion.sql`** (if you see *stack depth limit exceeded* / `54001` when reading `farms` — makes `is_farm_member` `SECURITY DEFINER` so RLS policies do not recurse.)
+   - **`supabase/farm_cloud_logins.sql`** (same **username + password** on a new browser joins the farm without Farm ID / join code — required for that login flow.)
 4. Create `.env.local` (not committed) with:
 
 ```bash
@@ -30,7 +31,7 @@ NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-5. Reload the app, then use **Settings → Sync**.
+5. Reload the app, then use **Settings → Sync**. Sign in once on the primary device so your password is registered for other browsers; new devices use **Login** with the same username and password (internet required for that first sign-in).
 
 ### If sync still fails after the above
 

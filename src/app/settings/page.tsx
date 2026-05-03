@@ -176,48 +176,61 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {farmLink ? (
-            <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-3 text-sm">
-              <div className="text-xs font-semibold uppercase tracking-wide text-primary">Add another device</div>
-              <p className="text-slate-600 text-xs leading-relaxed">
-                On the other phone or browser, open Login → <span className="font-semibold text-slate-800">Same farm on another phone or browser?</span> and paste these values, then tap Link.
-              </p>
-              <div>
-                <div className="text-xs text-slate-500">Farm ID</div>
-                <div className="mt-1 flex gap-2 items-start">
-                  <div className="font-mono text-xs text-slate-900 break-all flex-1">{farmLink.id}</div>
-                  <button
-                    type="button"
-                    className="shrink-0 px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
-                    onClick={() => void navigator.clipboard?.writeText(farmLink.id)}
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Join code</div>
-                <div className="mt-1 flex gap-2 items-center">
-                  <div className="font-mono text-lg font-bold tracking-widest text-slate-900">{farmLink.joinCode || "—"}</div>
-                  {farmLink.joinCode ? (
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
-                      onClick={() => void navigator.clipboard?.writeText(farmLink.joinCode)}
-                    >
-                      Copy
-                    </button>
-                  ) : null}
-                </div>
-              </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-700">
+            <p className="text-xs leading-relaxed">
+              <span className="font-semibold text-slate-900">Other devices:</span> use the same username and password on
+              the Login page (run <span className="font-mono">farm_cloud_logins.sql</span> in Supabase if you have not
+              yet). After one successful sign-in on this farm, credentials stay registered for new browsers.
+            </p>
+          </div>
+
+          <details className="rounded-lg border border-slate-200 text-sm open:pb-3">
+            <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-slate-800">
+              Optional: Farm ID and join code (fallback link)
+            </summary>
+            <div className="px-4 pb-3 space-y-3 text-xs text-slate-600 border-t border-slate-200/80 pt-3">
+              {farmLink ? (
+                <>
+                  <div>
+                    <div className="text-slate-500">Farm ID</div>
+                    <div className="mt-1 flex gap-2 items-start">
+                      <div className="font-mono text-xs text-slate-900 break-all flex-1">{farmLink.id}</div>
+                      <button
+                        type="button"
+                        className="shrink-0 px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
+                        onClick={() => void navigator.clipboard?.writeText(farmLink.id)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-500">Join code</div>
+                    <div className="mt-1 flex gap-2 items-center">
+                      <div className="font-mono text-base font-bold tracking-widest text-slate-900">
+                        {farmLink.joinCode || "—"}
+                      </div>
+                      {farmLink.joinCode ? (
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
+                          onClick={() => void navigator.clipboard?.writeText(farmLink.joinCode)}
+                        >
+                          Copy
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              ) : farmLinkError ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">{farmLinkError}</div>
+              ) : getFarmId() ? (
+                <div className="text-slate-500">Loading…</div>
+              ) : (
+                <div className="text-slate-500">Use Sync once to create your farm, then open this section.</div>
+              )}
             </div>
-          ) : farmLinkError ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{farmLinkError}</div>
-          ) : getFarmId() ? (
-            <div className="text-xs text-slate-500">Loading farm link…</div>
-          ) : (
-            <div className="text-xs text-slate-500">Use Sync once to create your farm, then farm id and join code appear here.</div>
-          )}
+          </details>
 
           <div className="flex flex-wrap gap-2">
             <button

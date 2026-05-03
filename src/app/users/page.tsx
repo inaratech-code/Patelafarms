@@ -6,6 +6,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { sha256Base64 } from "@/lib/auth";
 import { makeSyncEvent } from "@/lib/syncEvents";
+import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/farm";
+import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 
 type PermissionId =
   | "dashboard"
@@ -223,6 +225,13 @@ export default function UsersPage() {
           },
         })
       );
+    }
+    try {
+      await ensureSupabaseAuth();
+      await ensureFarm();
+      await publishFarmCloudLogin(createdUser!.username, passwordHash);
+    } catch {
+      /* offline or Supabase not configured */
     }
     setShowCreateUser(false);
     setUserForm({
@@ -616,6 +625,7 @@ export default function UsersPage() {
                             })
                           );
                         }
+                        await deleteFarmCloudLogin(user.username);
                         await db.users.delete(user.id);
                       }}
                       className="text-alert-red hover:text-alert-red/80"
