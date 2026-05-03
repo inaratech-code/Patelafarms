@@ -151,6 +151,8 @@ export interface FinancialAccount {
 
 export interface User {
   id?: number;
+  /** Stable id for cross-device sync (matches Supabase event `entity_id`). */
+  uid?: string;
   username: string;
   email?: string;
   passwordHash?: string;
@@ -160,6 +162,8 @@ export interface User {
 
 export interface Role {
   id?: number;
+  /** Stable id for cross-device sync. */
+  uid?: string;
   name: string;
   description?: string;
   permissions: string[]; // e.g. ["dashboard.read", "orders.write"]
@@ -534,6 +538,35 @@ export class PatelaFarmDatabase extends Dexie {
           if (!Array.isArray(p)) return;
           const mapped = p.map((x) => (x === "transactions.payments" ? "accounts.payments" : x));
           row.permissions = [...new Set(mapped as string[])];
+        });
+      });
+
+    this.version(14)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, uid, name',
+        users: '++id, uid, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+      })
+      .upgrade(async (tx) => {
+        const uuidv4 = () =>
+          (globalThis.crypto as unknown as { randomUUID?: () => string })?.randomUUID?.() ??
+          `${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+        await tx.table("roles").toCollection().modify((row: Record<string, unknown>) => {
+          if (!row.uid) row.uid = uuidv4();
+        });
+        await tx.table("users").toCollection().modify((row: Record<string, unknown>) => {
+          if (!row.uid) row.uid = uuidv4();
         });
       });
 

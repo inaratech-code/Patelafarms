@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { enqueueUserRecordOutbox } from "@/lib/sync";
 
 export const SESSION_KEY = "pf.session.v1";
 
@@ -80,4 +81,5 @@ export async function changePassword(params: {
 
   const newHash = await sha256Base64(newPassword);
   await db.users.update(userId, { passwordHash: newHash });
+  await enqueueUserRecordOutbox(userId);
 }

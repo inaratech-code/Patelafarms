@@ -15,7 +15,9 @@ import { changePassword, clearSession, getSession } from "@/lib/auth";
 import { getOrCreateDeviceId } from "@/lib/device";
 import { getSyncState } from "@/lib/syncState";
 import { syncNow, pushOutbox, pullEvents } from "@/lib/sync";
-import { useMemo, useState } from "react";
+import { getFarmId, ensureFarm, ensureFarmJoinCode } from "@/lib/farm";
+import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
 export default function SettingsPage() {
@@ -30,6 +32,36 @@ export default function SettingsPage() {
   const syncState = useMemo(() => getSyncState(), []);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [farmLink, setFarmLink] = useState<{ id: string; joinCode: string } | null>(null);
+  const [farmLinkError, setFarmLinkError] = useState<string>("");
+
+  useEffect(() => {
+    const fid = getFarmId();
+    if (!fid) {
+      setFarmLink(null);
+      return;
+    }
+    void (async () => {
+      try {
+        setFarmLinkError("");
+        await ensureSupabaseAuth();
+        await ensureFarm();
+        await ensureFarmJoinCode();
+        const supabase = getSupabaseClient();
+        const { data, error } = await supabase.from("farms").select("id, join_code").eq("id", fid).maybeSingle();
+        if (error) {
+          setFarmLinkError(error.message);
+          return;
+        }
+        const row = data as { id?: string; join_code?: string | null } | null;
+        if (row?.id) {
+          setFarmLink({ id: String(row.id), joinCode: row.join_code ? String(row.join_code) : "" });
+        }
+      } catch (e: unknown) {
+        setFarmLinkError(e instanceof Error ? e.message : "Could not load farm link info.");
+      }
+    })();
+  }, []);
 
   const [passwordForm, setPasswordForm] = useState({
     current: "",
@@ -143,6 +175,49 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {farmLink ? (
+            <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-3 text-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-primary">Add another device</div>
+              <p className="text-slate-600 text-xs leading-relaxed">
+                On the other phone or browser, open Login → <span className="font-semibold text-slate-800">Same farm on another phone or browser?</span> and paste these values, then tap Link.
+              </p>
+              <div>
+                <div className="text-xs text-slate-500">Farm ID</div>
+                <div className="mt-1 flex gap-2 items-start">
+                  <div className="font-mono text-xs text-slate-900 break-all flex-1">{farmLink.id}</div>
+                  <button
+                    type="button"
+                    className="shrink-0 px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
+                    onClick={() => void navigator.clipboard?.writeText(farmLink.id)}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Join code</div>
+                <div className="mt-1 flex gap-2 items-center">
+                  <div className="font-mono text-lg font-bold tracking-widest text-slate-900">{farmLink.joinCode || "—"}</div>
+                  {farmLink.joinCode ? (
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
+                      onClick={() => void navigator.clipboard?.writeText(farmLink.joinCode)}
+                    >
+                      Copy
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : farmLinkError ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{farmLinkError}</div>
+          ) : getFarmId() ? (
+            <div className="text-xs text-slate-500">Loading farm link…</div>
+          ) : (
+            <div className="text-xs text-slate-500">Use Sync once to create your farm, then farm id and join code appear here.</div>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <button

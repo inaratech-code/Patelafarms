@@ -8,14 +8,17 @@ import {
   type LedgerAccount,
   type Payment,
   type Purchase,
+  type Role,
   type Sale,
   type StockMovement,
   type SyncEvent,
   type SyncEventOp,
+  type User,
 } from "@/lib/db";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getSyncState, setSyncState } from "@/lib/syncState";
 import { ensureFarm, getFarmId } from "@/lib/farm";
+import { makeSyncEvent } from "@/lib/syncEvents";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -31,6 +34,126 @@ function asString(v: unknown): string | undefined {
 }
 function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+const ROLE_USER_OUTBOX_BACKFILL = "pf.roleUserOutboxV1";
+
+async function upsertRoleFromSyncPayload(roleRaw: unknown) {
+  const r = asRecord(roleRaw);
+  const uid = r ? asString(r.uid) : undefined;
+  if (!uid) return undefined;
+  const row: Omit<Role, "id"> = {
+    uid,
+    name: String(r?.name ?? "role"),
+    description: asString(r?.description),
+    permissions: Array.isArray(r?.permissions) ? (r.permissions as string[]) : [],
+    isSystem: Boolean(r?.isSystem),
+  };
+  const existing = await db.roles.where("uid").equals(uid).first();
+  if (existing?.id) {
+    await db.roles.update(existing.id, row);
+    return existing.id;
+  }
+  return await db.roles.add(row);
+}
+
+async function upsertUserFromSyncPayload(payload: unknown) {
+  const p = asRecord(payload);
+  const er = p ? asRecord(p.embeddedRole) : undefined;
+  if (er) await upsertRoleFromSyncPayload(er);
+  const u = p ? asRecord(p.user) : undefined;
+  const uid = u ? asString(u.uid) : undefined;
+  if (!uid) return;
+  const roleUid = er ? asString(er.uid) : undefined;
+  let roleId = 0;
+  if (roleUid) {
+    const rl = await db.roles.where("uid").equals(roleUid).first();
+    if (rl?.id) roleId = rl.id;
+  }
+  if (!roleId && er) {
+    const nm = asString(er.name);
+    if (nm) {
+      const rl = await db.roles.filter((x) => x.name?.toLowerCase() === nm.toLowerCase()).first();
+      if (rl?.id) roleId = rl.id;
+    }
+  }
+  if (!roleId) {
+    const any = await db.roles.orderBy("id").first();
+    if (any?.id) roleId = any.id;
+  }
+  if (!roleId) return;
+
+  const row: Omit<User, "id"> = {
+    uid,
+    username: String(u?.username ?? "").trim(),
+    email: asString(u?.email),
+    phone: asString(u?.phone),
+    passwordHash: asString(u?.passwordHash),
+    roleId,
+  };
+  const found = await db.users.where("uid").equals(uid).first();
+  if (found?.id) await db.users.update(found.id, row);
+  else await db.users.add(row);
+}
+
+/** One-time: emit role/user snapshot events so other devices can log in after pull. */
+export async function enqueueRoleUserOutboxBackfillOnce() {
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem(ROLE_USER_OUTBOX_BACKFILL)) return;
+
+  const roles = await db.roles.toArray();
+  const users = await db.users.toArray();
+  const roleById = new Map<number, Role>();
+  for (const r of roles) if (typeof r.id === "number") roleById.set(r.id, r);
+
+  await db.transaction("rw", db.outbox, async () => {
+    for (const r of roles) {
+      if (!r.uid) continue;
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "role.record",
+          entityId: r.uid,
+          op: "create",
+          payload: { role: { ...r } },
+        })
+      );
+    }
+    for (const u of users) {
+      if (!u.uid) continue;
+      const role = typeof u.roleId === "number" ? roleById.get(u.roleId) : undefined;
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "user.record",
+          entityId: u.uid,
+          op: "create",
+          payload: {
+            user: { ...u },
+            embeddedRole: role?.uid ? { ...role } : undefined,
+          },
+        })
+      );
+    }
+  });
+
+  localStorage.setItem(ROLE_USER_OUTBOX_BACKFILL, "1");
+}
+
+/** Push updated user (e.g. password) so other devices stay in sync. */
+export async function enqueueUserRecordOutbox(userId: number) {
+  const user = await db.users.get(userId);
+  if (!user?.uid) return;
+  const role = typeof user.roleId === "number" ? await db.roles.get(user.roleId) : undefined;
+  await db.outbox.add(
+    makeSyncEvent({
+      entityType: "user.record",
+      entityId: user.uid,
+      op: "update",
+      payload: {
+        user: { ...user },
+        embeddedRole: role?.uid ? { ...role } : undefined,
+      },
+    })
+  );
 }
 
 function toSupabaseRow(e: SyncEvent) {
@@ -64,6 +187,7 @@ export async function pushOutbox() {
   const supabase = getSupabaseClient();
   await ensureSupabaseAuth();
   await ensureFarm();
+  await enqueueRoleUserOutboxBackfillOnce();
   // Dexie rejects .equals(undefined); pending rows have no pushedAt (or empty).
   const pending = await db.outbox.filter((e) => !e.pushedAt).toArray();
   if (pending.length === 0) return { pushed: 0 };
@@ -301,6 +425,25 @@ export async function applyEvents(events: SyncEvent[]) {
             await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
           }
         }
+      }
+      if (e.entityType === "role.record" && e.op === "create") {
+        const role = asRecord(payload?.role);
+        if (role) await upsertRoleFromSyncPayload(role);
+      }
+      if (e.entityType === "role.record" && e.op === "update") {
+        const role = asRecord(payload?.role);
+        if (role) await upsertRoleFromSyncPayload(role);
+      }
+      if (e.entityType === "role.record" && e.op === "delete") {
+        const uid = asString(payload?.uid) ?? e.entityId;
+        if (uid) await db.roles.where("uid").equals(uid).delete();
+      }
+      if (e.entityType === "user.record" && (e.op === "create" || e.op === "update")) {
+        await upsertUserFromSyncPayload(payload);
+      }
+      if (e.entityType === "user.record" && e.op === "delete") {
+        const uid = asString(payload?.uid) ?? e.entityId;
+        if (uid) await db.users.where("uid").equals(uid).delete();
       }
       if (e.entityType === "order.purchase" && e.op === "create") {
         const purchasesArr = asArray(payload?.purchases);

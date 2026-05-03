@@ -21,6 +21,7 @@ Open `http://localhost:3000`.
    - `supabase/events.sql`
    - `supabase/tenancy_rls.sql`
    - **`supabase/fix_farms_rls_v2.sql`** (required if you see *“new row violates row-level security policy for table farms”* — fixes `farms` / `farm_members` policies and grants for the `authenticated` role.)
+   - **`supabase/join_farm.sql`** (adds `join_code` on farms + `join_farm()` RPC so a second browser can join the same farm and sync users/data.)
 4. Create `.env.local` (not committed) with:
 
 ```bash

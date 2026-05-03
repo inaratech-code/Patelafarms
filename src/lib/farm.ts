@@ -35,6 +35,13 @@ function formatFarmDbError(prefix: string, err: unknown): string {
 
 export const FARM_ID_KEY = "pf.farmId.v1";
 
+function generateJoinCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
 export function getFarmId() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(FARM_ID_KEY);
@@ -75,9 +82,10 @@ export async function ensureFarm() {
   if (existingRows?.length) {
     farmId = String((existingRows[0] as { id: string }).id);
   } else {
+    const joinCode = generateJoinCode();
     const { data: farm, error: farmErr } = await supabase
       .from("farms")
-      .insert({ name: "Patela Farm", created_by: user.id })
+      .insert({ name: "Patela Farm", created_by: user.id, join_code: joinCode })
       .select("id")
       .single();
     if (farmErr) throw new Error(formatFarmDbError("Could not create farm", farmErr));
@@ -96,5 +104,37 @@ export async function ensureFarm() {
 
   setFarmId(farmId);
   return farmId;
+}
+
+/** If the farm row has no join code yet, set one (creator only; RLS). */
+export async function ensureFarmJoinCode() {
+  const farmId = getFarmId();
+  if (!farmId) return;
+  await ensureSupabaseAuth();
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.from("farms").select("join_code").eq("id", farmId).maybeSingle();
+  if (error) throw new Error(formatFarmDbError("Could not read farm", error));
+  const row = data as { join_code?: string | null } | null;
+  if (row?.join_code && String(row.join_code).trim().length >= 4) return;
+  const joinCode = generateJoinCode();
+  const { error: upErr } = await supabase.from("farms").update({ join_code: joinCode }).eq("id", farmId);
+  if (upErr) throw new Error(formatFarmDbError("Could not set join code (owner device only)", upErr));
+}
+
+/**
+ * Link this browser’s Supabase anonymous user to an existing farm (same cloud data as another device).
+ * Call before relying on sync; then set farm id in localStorage and run pull/push.
+ */
+export async function joinFarmWithCode(farmId: string, code: string) {
+  const id = farmId.trim();
+  const c = code.trim();
+  if (!id || !c) throw new Error("Farm id and join code are required");
+  await ensureSupabaseAuth();
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("join_farm", { p_farm_id: id, p_code: c });
+  if (error) throw new Error(formatFarmDbError("Could not join farm", error));
+  if (data !== true) throw new Error("Invalid farm id or join code.");
+  setFarmId(id);
+  return id;
 }
 

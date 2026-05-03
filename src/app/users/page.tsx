@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { sha256Base64 } from "@/lib/auth";
+import { makeSyncEvent } from "@/lib/syncEvents";
 
 type PermissionId =
   | "dashboard"
@@ -162,11 +163,27 @@ export default function UsersPage() {
     e.preventDefault();
     const name = roleForm.name.trim();
     if (!name) return;
-    await db.roles.add({
+    const roleUid =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const newRoleId = await db.roles.add({
+      uid: roleUid,
       name,
       description: roleForm.description.trim() || undefined,
       permissions: Array.from(roleForm.permissions) as string[],
     });
+    const createdRole = await db.roles.get(newRoleId);
+    if (createdRole?.uid) {
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "role.record",
+          entityId: createdRole.uid,
+          op: "create",
+          payload: { role: { ...createdRole } },
+        })
+      );
+    }
     setShowCreateRole(false);
     setRoleForm({ name: "", description: "", permissions: new Set<PermissionId>(DEFAULT_PERMISSIONS) });
   };
@@ -180,13 +197,33 @@ export default function UsersPage() {
     if (isAdminRole && !userForm.email.trim()) return;
 
     const passwordHash = await sha256Base64(userForm.password);
-    await db.users.add({
+    const userUid =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const newUserId = await db.users.add({
+      uid: userUid,
       username: userForm.username.trim(),
       roleId: userForm.roleId,
       email: userForm.email.trim() || undefined,
       phone: userForm.phone.trim() || undefined,
       passwordHash,
     });
+    const createdUser = await db.users.get(newUserId);
+    const role = await db.roles.get(userForm.roleId);
+    if (createdUser?.uid) {
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "user.record",
+          entityId: createdUser.uid,
+          op: "create",
+          payload: {
+            user: { ...createdUser },
+            embeddedRole: role?.uid ? { ...role } : undefined,
+          },
+        })
+      );
+    }
     setShowCreateUser(false);
     setUserForm({
       username: "",
@@ -565,7 +602,24 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.phone || "-"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onClick={() => db.users.delete(user.id!)} className="text-alert-red hover:text-alert-red/80">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!user.id) return;
+                        if (user.uid) {
+                          await db.outbox.add(
+                            makeSyncEvent({
+                              entityType: "user.record",
+                              entityId: user.uid,
+                              op: "delete",
+                              payload: { uid: user.uid },
+                            })
+                          );
+                        }
+                        await db.users.delete(user.id);
+                      }}
+                      className="text-alert-red hover:text-alert-red/80"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
