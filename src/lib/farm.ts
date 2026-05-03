@@ -30,6 +30,12 @@ function formatFarmDbError(prefix: string, err: unknown): string {
   ) {
     return `${prefix}: ${msg} — In Supabase: Authentication → Providers → Anonymous (enable). SQL Editor: run supabase/fix_farms_rls_v2.sql (after events.sql + tenancy_rls.sql). See README “Supabase”.`;
   }
+  if (
+    code === "54001" ||
+    lower.includes("stack depth limit exceeded")
+  ) {
+    return `${prefix}: ${msg} — SQL Editor: run supabase/fix_is_farm_member_rls_recursion.sql (RLS recursion on is_farm_member). See README “Supabase”.`;
+  }
   return `${prefix}: ${msg}`;
 }
 

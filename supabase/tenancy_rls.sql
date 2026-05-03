@@ -28,17 +28,22 @@ alter table public.events
 
 create index if not exists events_farm_created_idx on public.events(farm_id, created_at);
 
--- Helper: membership check
+-- Helper: membership check (SECURITY DEFINER so reads on farm_members do not
+-- re-enter farm_members_select → is_farm_member → stack overflow / 54001).
 create or replace function public.is_farm_member(farm uuid)
 returns boolean
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select exists (
     select 1 from public.farm_members m
     where m.farm_id = farm and m.user_id = auth.uid()
   );
 $$;
+
+grant execute on function public.is_farm_member(uuid) to authenticated;
 
 -- RLS
 alter table public.farms enable row level security;
