@@ -15,15 +15,23 @@ Open `http://localhost:3000`.
 
 ## Supabase (optional, for multi-device sync)
 
-1. Create a Supabase project and enable **Anonymous sign-ins** in Auth.
-2. Run the SQL scripts in Supabase SQL editor:
+1. Create a Supabase project.
+2. **Authentication → Providers → Anonymous** — turn **Anonymous sign-ins** **on** and save. (The app uses `signInAnonymously()` so sync has an `auth.uid()` for row-level security.)
+3. Run the SQL scripts in the Supabase **SQL Editor** (new query, run each file in order):
    - `supabase/events.sql`
    - `supabase/tenancy_rls.sql`
-3. Create `.env.local` (not committed) with:
+   - **`supabase/fix_farms_rls_v2.sql`** (required if you see *“new row violates row-level security policy for table farms”* — fixes `farms` / `farm_members` policies and grants for the `authenticated` role.)
+4. Create `.env.local` (not committed) with:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-Then use **Settings → Sync** in the app.
+5. Reload the app, then use **Settings → Sync**.
+
+### If sync still fails after the above
+
+- Confirm `.env.local` points at the **same** Supabase project where you ran the SQL.
+- In the SQL Editor, confirm `public.is_farm_member` exists; if not, re-run `tenancy_rls.sql` before `fix_farms_rls_v2.sql`.
+- Clear site data for this app (or wait for a fresh anonymous session) and try sync again.

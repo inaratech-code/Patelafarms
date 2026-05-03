@@ -1,15 +1,34 @@
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 
+type PostgrestLikeError = {
+  message?: string;
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function formatPostgrestDetails(err: unknown): string {
+  const e = err as PostgrestLikeError | null | undefined;
+  const parts: string[] = [];
+  if (typeof e?.message === "string" && e.message) parts.push(e.message);
+  else if (err != null) parts.push(String(err));
+  if (typeof e?.code === "string" && e.code) parts.push(`code=${e.code}`);
+  if (typeof e?.details === "string" && e.details) parts.push(`details: ${e.details}`);
+  if (typeof e?.hint === "string" && e.hint) parts.push(`hint: ${e.hint}`);
+  return parts.join(" · ");
+}
+
 function formatFarmDbError(prefix: string, err: unknown): string {
-  const e = err as { message?: string; code?: string } | null | undefined;
-  const msg = typeof e?.message === "string" ? e.message : String(err ?? "Unknown error");
+  const e = err as PostgrestLikeError | null | undefined;
+  const msg = formatPostgrestDetails(err);
   const code = e?.code;
+  const lower = msg.toLowerCase();
   if (
     code === "42501" ||
-    msg.toLowerCase().includes("row-level security") ||
-    msg.toLowerCase().includes("violates row-level security")
+    lower.includes("row-level security") ||
+    lower.includes("violates row-level security")
   ) {
-    return `${prefix}: ${msg} — In Supabase: enable Anonymous sign-in (Auth → Providers), then run the SQL in supabase/fix_farms_rls_v2.sql (SQL Editor).`;
+    return `${prefix}: ${msg} — In Supabase: Authentication → Providers → Anonymous (enable). SQL Editor: run supabase/fix_farms_rls_v2.sql (after events.sql + tenancy_rls.sql). See README “Supabase”.`;
   }
   return `${prefix}: ${msg}`;
 }
