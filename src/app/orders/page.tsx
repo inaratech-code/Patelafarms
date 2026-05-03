@@ -9,23 +9,72 @@ import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMet
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 
+/** Digits + one dot; strips meaningless leading zeros on the whole part (keeps 0.5). */
+function normalizeSaleQtyInput(raw: string): string {
+  let s = raw.replace(/[^\d.]/g, "");
+  const firstDot = s.indexOf(".");
+  if (firstDot !== -1) {
+    s = s.slice(0, firstDot + 1) + s.slice(firstDot + 1).replace(/\./g, "");
+  }
+  if (s === "") return "";
+
+  const endsWithDot = s.endsWith(".") && (s.match(/\./g) ?? []).length === 1;
+  const parts = s.split(".");
+  let intPart = parts[0] ?? "";
+  const fracPart = parts[1];
+
+  if (intPart === "" && fracPart !== undefined) {
+    intPart = "0";
+  }
+  if (intPart.length > 1) {
+    intPart = intPart.replace(/^0+/, "") || "0";
+  }
+
+  if (fracPart !== undefined) {
+    if (fracPart === "" && endsWithDot) return `${intPart}.`;
+    return `${intPart}.${fracPart}`;
+  }
+  return intPart;
+}
+
+function parseSaleQuantityInput(s: string): number | null {
+  const t = s.trim();
+  if (t === "" || t === ".") return null;
+  const n = Number.parseFloat(t);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
 export default function OrdersPage() {
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
   const sales = useLiveQuery(() => db.sales.toArray()) || [];
   const purchases = useLiveQuery(() => db.purchases.toArray()) || [];
   const financialAccounts = useLiveQuery(() => db.financialAccounts.toArray()) || [];
+  const ledgerCustomers = useLiveQuery(() => db.ledgerAccounts.where("type").equals("Customer").toArray()) || [];
+
+  const customerOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const a of ledgerCustomers) {
+      if (a.name?.trim()) names.add(a.name.trim());
+    }
+    for (const s of sales) {
+      const n = s.customerName?.trim();
+      if (n) names.add(n);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [ledgerCustomers, sales]);
   
   const [activeTab, setActiveTab] = useState<'Sales' | 'Purchases'>('Sales');
   const [showForm, setShowForm] = useState(false);
   
+  const [saleQuantityStr, setSaleQuantityStr] = useState("1");
   const [saleForm, setSaleForm] = useState<{
     itemId: number;
-    quantity: number;
     customerName: string;
     paymentType: "Cash" | "Credit";
     method: PaymentMethod;
     financialAccountId: number;
-  }>({ itemId: 0, quantity: 1, customerName: "", paymentType: "Cash", method: "Cash", financialAccountId: 0 });
+  }>({ itemId: 0, customerName: "", paymentType: "Cash", method: "Cash", financialAccountId: 0 });
   const [purchaseForm, setPurchaseForm] = useState({
     supplierName: "",
     date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
@@ -38,8 +87,10 @@ export default function OrdersPage() {
 
   const saleTotal = useMemo(() => {
     const item = inventory.find((i) => i.id === Number(saleForm.itemId));
-    return item ? item.sellingPrice * saleForm.quantity : 0;
-  }, [inventory, saleForm.itemId, saleForm.quantity]);
+    const qty = parseSaleQuantityInput(saleQuantityStr);
+    if (!item || qty == null || qty <= 0) return 0;
+    return item.sellingPrice * qty;
+  }, [inventory, saleForm.itemId, saleQuantityStr]);
 
   const purchaseTotal = useMemo(() => {
     return purchaseForm.lineItems.reduce((acc, li) => {
@@ -78,10 +129,17 @@ export default function OrdersPage() {
 
   const handleSaleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const qtyParsed = parseSaleQuantityInput(saleQuantityStr);
+    if (qtyParsed == null) {
+      return alert("Enter a quantity.");
+    }
+    if (qtyParsed <= 0) {
+      return alert("Quantity must be greater than 0.");
+    }
     const item = inventory.find(i => i.id === Number(saleForm.itemId));
-    if (!item || item.quantity < saleForm.quantity) return alert("Not enough stock!");
+    if (!item || item.quantity < qtyParsed) return alert("Not enough stock!");
     
-    const totalPrice = item.sellingPrice * saleForm.quantity;
+    const totalPrice = item.sellingPrice * qtyParsed;
     const date = new Date().toISOString();
 
     const isCredit = saleForm.paymentType === "Credit";
@@ -94,7 +152,7 @@ export default function OrdersPage() {
       const sale = {
         uid: newUid(),
         itemId: item.id!,
-        quantity: saleForm.quantity,
+        quantity: qtyParsed,
         totalPrice,
         customerName: saleForm.customerName,
         paymentType: saleForm.paymentType,
@@ -103,9 +161,9 @@ export default function OrdersPage() {
       const saleId = await db.sales.add(sale);
 
       // 2. Reduce Stock
-      await db.inventory.update(item.id!, { quantity: item.quantity - saleForm.quantity });
+      await db.inventory.update(item.id!, { quantity: item.quantity - qtyParsed });
       // 3. Record Movement
-      const movement = { uid: newUid(), itemId: item.id!, quantity: saleForm.quantity, type: 'OUT' as const, reason: 'Sale' as const, date };
+      const movement = { uid: newUid(), itemId: item.id!, quantity: qtyParsed, type: 'OUT' as const, reason: 'Sale' as const, date };
       const movementId = await db.stockMovement.add(movement);
       // 4. DayBook Entry (cash only)
       let dayBookId: number | null = null;
@@ -121,7 +179,7 @@ export default function OrdersPage() {
           type: "Income",
           category: "Sale",
           amount: totalPrice,
-          description: `Sold ${saleForm.quantity} ${item.unit} ${item.name} (${saleForm.method})`,
+          description: `Sold ${qtyParsed} ${item.unit} ${item.name} (${saleForm.method})`,
           method: saleForm.method,
           accountId,
         };
@@ -156,7 +214,7 @@ export default function OrdersPage() {
         ledgerEntryId = (await addLedgerEntry({
           accountId: ledgerAccountId,
           date,
-          description: `Credit sale: ${saleForm.quantity} ${item.unit} ${item.name}`,
+          description: `Credit sale: ${qtyParsed} ${item.unit} ${item.name}`,
           debit: totalPrice,
           credit: 0,
         })) as number;
@@ -191,7 +249,7 @@ export default function OrdersPage() {
           payload: {
             sale: { ...sale, itemUid: item.uid },
             movement: { ...movement, itemUid: item.uid },
-            inventoryDelta: { itemUid: item.uid, delta: -saleForm.quantity },
+            inventoryDelta: { itemUid: item.uid, delta: -qtyParsed },
             dayBookUid,
             ledgerEntryUid: ledgerEntry?.uid ?? null,
             ledgerAccountUid: ledgerAccount?.uid ?? null,
@@ -201,7 +259,8 @@ export default function OrdersPage() {
     });
 
     setShowForm(false);
-    setSaleForm({ itemId: 0, quantity: 1, customerName: "", paymentType: "Cash", method: "Cash", financialAccountId: 0 });
+    setSaleQuantityStr("1");
+    setSaleForm({ itemId: 0, customerName: "", paymentType: "Cash", method: "Cash", financialAccountId: 0 });
   };
 
   const handlePurchaseSubmit = async (e: React.FormEvent) => {
@@ -384,11 +443,30 @@ export default function OrdersPage() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Quantity</label>
-            <input required type="number" min={1} value={saleForm.quantity} onChange={e => setSaleForm({...saleForm, quantity: Number(e.target.value)})} className="w-full px-3 py-2 border rounded-md" />
+            <input
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              value={saleQuantityStr}
+              onChange={(e) => setSaleQuantityStr(normalizeSaleQtyInput(e.target.value))}
+              className="w-full px-3 py-2 border rounded-md"
+              placeholder="e.g. 29.8"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Customer Name (Optional)</label>
-            <input type="text" value={saleForm.customerName} onChange={e => setSaleForm({...saleForm, customerName: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+            <select
+              value={saleForm.customerName}
+              onChange={(e) => setSaleForm({ ...saleForm, customerName: e.target.value })}
+              className="w-full px-3 py-2 border rounded-md bg-white"
+            >
+              <option value="">Walk-in</option>
+              {customerOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Payment Type</label>
@@ -530,7 +608,8 @@ export default function OrdersPage() {
               <label className="block text-sm font-medium mb-1">Quantity</label>
               <input
                 type="number"
-                min={1}
+                min={0}
+                step="any"
                 value={purchaseForm.lineItemDraft.quantity}
                 onChange={(e) =>
                   setPurchaseForm({
