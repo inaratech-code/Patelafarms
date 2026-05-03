@@ -1,7 +1,8 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Plus } from "lucide-react";
 import { db, type InventoryLossType } from "@/lib/db";
 import { newUid } from "@/lib/uid";
@@ -28,6 +29,9 @@ function normalizeDecimal(raw: string) {
 }
 
 export default function LossWastagePage() {
+  const searchParams = useSearchParams();
+  const qpItemId = Number(searchParams.get("itemId") ?? 0);
+
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
   const lossesRaw = useLiveQuery(() => db.inventoryLosses.toArray());
   const losses = useMemo(() => lossesRaw ?? [], [lossesRaw]);
@@ -49,6 +53,14 @@ export default function LossWastagePage() {
       .slice()
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [losses]);
+
+  useEffect(() => {
+    if (!qpItemId || !inventory.length) return;
+    const item = inventory.find((i) => i.id === qpItemId);
+    if (!item?.id) return;
+    setForm((f) => ({ ...f, itemId: qpItemId, unit: item.unit ?? f.unit }));
+    setShowForm(true);
+  }, [qpItemId, inventory]);
 
   const onSelectItem = (itemId: number) => {
     const item = inventory.find((i) => i.id === itemId);

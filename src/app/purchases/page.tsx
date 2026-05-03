@@ -82,14 +82,39 @@ export default function PurchasesPage() {
     const totalCost = lineItemsResolved.reduce((acc, li) => acc + (li.item!.costPrice * li.quantity), 0);
     const description = `Purchase from ${supplierName} (${purchaseForm.lineItems.length} item(s))`;
 
+    let supplierLedgerId: number | undefined;
+    if (purchaseForm.paymentType === "Due") {
+      supplierLedgerId = await getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" });
+    }
+
     await db.transaction("rw", db.tables, async () => {
       for (const li of lineItemsResolved) {
         const item = li.item!;
         const lineCost = item.costPrice * li.quantity;
+        const paid = purchaseForm.paymentType === "Paid" ? lineCost : 0;
+        const due = purchaseForm.paymentType === "Paid" ? 0 : lineCost;
+        const paymentStatus = purchaseForm.paymentType === "Paid" ? ("paid" as const) : ("due" as const);
 
-        const purchase = { uid: newUid(), supplierName, itemId: item.id!, quantity: li.quantity, totalCost: lineCost, date };
+        const purchase = {
+          uid: newUid(),
+          supplierName,
+          supplierId: supplierLedgerId,
+          itemId: item.id!,
+          quantity: li.quantity,
+          totalCost: lineCost,
+          date,
+          paidAmount: paid,
+          dueAmount: due,
+          paymentStatus,
+        };
         await db.purchases.add(purchase);
-        await db.inventory.update(item.id!, { quantity: item.quantity + li.quantity });
+
+        const prevQty = item.quantity;
+        const prevAvg = Number(item.avgCost ?? item.costPrice ?? 0);
+        const addQty = li.quantity;
+        const newQty = prevQty + addQty;
+        const newAvg = newQty > 0 ? (prevQty * prevAvg + lineCost) / newQty : prevAvg;
+        await db.inventory.update(item.id!, { quantity: newQty, avgCost: newAvg });
         const movement = { uid: newUid(), itemId: item.id!, quantity: li.quantity, type: "IN" as const, reason: "Purchase" as const, date };
         await db.stockMovement.add(movement);
 
@@ -101,8 +126,8 @@ export default function PurchasesPage() {
             payload: {
               supplierName,
               date,
-              paymentType: "Credit",
-              method: "Cash",
+              paymentType: purchaseForm.paymentType === "Paid" ? "Cash" : "Credit",
+              method: purchaseForm.method,
               totalCost: lineCost,
               purchases: [{ ...purchase, itemUid: item.uid }],
               movements: [{ ...movement, itemUid: item.uid }],
@@ -138,7 +163,7 @@ export default function PurchasesPage() {
           })
         );
       } else {
-        const accountId = await getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" });
+        const accountId = supplierLedgerId ?? (await getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" }));
         const ledgerEntryId = (await addLedgerEntry({ accountId, date, description, debit: 0, credit: totalCost })) as number;
         const acct = await db.ledgerAccounts.get(accountId);
         const entryRow = await db.ledgerEntries.get(ledgerEntryId);

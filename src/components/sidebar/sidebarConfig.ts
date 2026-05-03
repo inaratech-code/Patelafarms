@@ -13,6 +13,9 @@ import {
   Users,
   Bell,
   Settings,
+  BarChart3,
+  PackageOpen,
+  FileStack,
 } from "lucide-react";
 
 export type SidebarGroupId = "inventory" | "transactions" | "accounts" | "people";
@@ -39,6 +42,7 @@ export const sidebarGroups: SidebarGroupConfig[] = [
     icon: Package,
     items: [
       { id: "items", label: "Items", href: "/inventory", icon: Package },
+      { id: "feedUsage", label: "Feed usage", href: "/consumption", icon: PackageOpen },
       { id: "stockMovement", label: "Stock Movement", href: "/stock-movement", icon: ArrowUpDown },
       { id: "lossWastage", label: "Loss / Wastage", href: "/loss-wastage", icon: AlertTriangle },
     ],
@@ -48,6 +52,7 @@ export const sidebarGroups: SidebarGroupConfig[] = [
     label: "Transactions",
     icon: ShoppingCart,
     items: [
+      { id: "transactionsHub", label: "Overview", href: "/transactions", icon: FileStack },
       { id: "sales", label: "Sales", href: "/orders", icon: ShoppingCart }, // route stays /orders
       { id: "purchases", label: "Purchases", href: "/purchases", icon: Truck },
       { id: "expenses", label: "Expenses", href: "/expenses", icon: Receipt },
@@ -79,6 +84,7 @@ export const sidebarGroups: SidebarGroupConfig[] = [
 
 export const sidebarTopLevel = [
   { id: "dashboard", label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { id: "reports", label: "Reports", href: "/reports", icon: BarChart3 },
   { id: "outstanding", label: "Outstanding", href: "/outstanding", icon: HandCoins },
   { id: "alerts", label: "Alerts", href: "/alerts", icon: Bell, badge: "alerts" as const },
   { id: "settings", label: "Settings", href: "/settings", icon: Settings },

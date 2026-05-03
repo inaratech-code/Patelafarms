@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle } from "lucide-react";
+import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle, BarChart3, Soup } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Home", icon: Home, isAction: false as const },
@@ -18,8 +18,10 @@ const addActions = [
   { href: "/inventory", label: "Add Inventory", icon: Package },
   { href: "/orders", label: "Record Sale", icon: ShoppingCart },
   { href: "/purchases", label: "Add Supplier / Purchase", icon: Truck },
+  { href: "/consumption", label: "Feed usage", icon: Package },
   { href: "/stock-movement", label: "Stock Movement", icon: ArrowUpDown },
   { href: "/loss-wastage", label: "Loss / Wastage", icon: AlertTriangle },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/expenses", label: "Add Expense", icon: Receipt },
   { href: "/customers", label: "Add Customer", icon: Users },
   { href: "/suppliers", label: "Add Supplier", icon: Truck },

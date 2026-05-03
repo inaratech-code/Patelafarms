@@ -36,11 +36,14 @@ function safeJsonParse<T>(value: string | null, fallback: T): T {
 }
 
 function computeAlertBadge(params: {
-  inventory: Array<{ quantity: number; minStockThreshold: number; expiryDate?: string }>;
+  inventory: Array<{ quantity: number; minStockThreshold: number; reorderLevel?: number; expiryDate?: string }>;
   ledgerAccounts: Array<{ id?: number }>;
   ledgerEntries: Array<{ accountId: number; debit: number; credit: number }>;
 }) {
-  const lowStock = params.inventory.filter((i) => i.quantity <= i.minStockThreshold).length;
+  const lowStock = params.inventory.filter((i) => {
+    const th = i.reorderLevel ?? i.minStockThreshold ?? 0;
+    return i.quantity <= th;
+  }).length;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

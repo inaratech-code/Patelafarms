@@ -1,7 +1,8 @@
 "use client";
 
 import { Plus, Minus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type StockMovement } from "@/lib/db";
 import { makeSyncEvent } from "@/lib/syncEvents";
@@ -12,6 +13,9 @@ type MovementMode = "Add" | "Remove";
 const reasonOptions: Array<StockMovement["reason"]> = ["Harvest", "Sale", "Usage", "Purchase", "Damage"];
 
 export default function StockMovementPage() {
+  const searchParams = useSearchParams();
+  const qpItemId = Number(searchParams.get("itemId") ?? 0);
+
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
   const movements = useLiveQuery(() => db.stockMovement.toArray()) || [];
 
@@ -25,6 +29,11 @@ export default function StockMovementPage() {
 
   const selectedItem = useMemo(() => inventory.find((i) => i.id === Number(form.itemId)), [inventory, form.itemId]);
   const movementType: StockMovement["type"] = mode === "Add" ? "IN" : "OUT";
+
+  useEffect(() => {
+    if (!qpItemId) return;
+    setForm((f) => ({ ...f, itemId: qpItemId }));
+  }, [qpItemId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

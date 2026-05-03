@@ -1,12 +1,14 @@
 "use client";
 
-import { PackagePlus, Trash2, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import Link from "next/link";
+import { PackagePlus, Trash2, ShoppingCart, AlertTriangle, Soup } from "lucide-react";
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { db, type ItemTypeErp } from "@/lib/db";
 import { commonUnits } from "@/lib/units";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
+import { isConsumable, isSellable, resolveItemType } from "@/lib/erp/items";
 
 export default function InventoryPage() {
   const items = useLiveQuery(() => db.inventory.toArray());
@@ -15,9 +17,12 @@ export default function InventoryPage() {
   // New Item Form
   const [formData, setFormData] = useState({
     name: "",
+    sku: "",
+    itemType: "sellable" as ItemTypeErp,
     quantity: "",
     unit: "kg",
     costPrice: "",
+    sellingPrice: "",
     minStockThreshold: "",
     expiryDate: "",
   });
@@ -37,14 +42,22 @@ export default function InventoryPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const reorder = Number(formData.minStockThreshold || 0);
+    const cost = Number(formData.costPrice || 0);
     const item = {
       uid: newUid(),
-      ...formData,
+      name: formData.name,
+      sku: formData.sku.trim() || undefined,
+      itemType: formData.itemType,
+      active: true as const,
       unit: unitMode === "custom" ? (customUnit.trim() || formData.unit) : formData.unit,
       quantity: Number(formData.quantity || 0),
-      costPrice: Number(formData.costPrice || 0),
-      sellingPrice: 0,
-      minStockThreshold: Number(formData.minStockThreshold || 0),
+      costPrice: cost,
+      sellingPrice: Number(formData.sellingPrice || 0),
+      minStockThreshold: reorder,
+      reorderLevel: reorder,
+      avgCost: cost,
+      expiryDate: formData.expiryDate || undefined,
     };
 
     await db.transaction("rw", db.tables, async () => {
@@ -59,16 +72,35 @@ export default function InventoryPage() {
       );
     });
     setShowForm(false);
-    setFormData({ name: "", quantity: "", unit: "kg", costPrice: "", minStockThreshold: "", expiryDate: "" });
+    setFormData({
+      name: "",
+      sku: "",
+      itemType: "sellable",
+      quantity: "",
+      unit: "kg",
+      costPrice: "",
+      sellingPrice: "",
+      minStockThreshold: "",
+      expiryDate: "",
+    });
     setUnitMode("preset");
     setCustomUnit("");
   };
 
   const getStockStatus = (quantity: number, threshold: number) => {
     if (quantity <= 0) return { label: "Out of stock", classes: "bg-alert-red/10 text-alert-red" };
-    if (quantity <= threshold) return { label: "Low stock", classes: "bg-alert-yellow/10 text-alert-yellow" };
+    if (threshold > 0 && quantity <= threshold) return { label: "Low stock", classes: "bg-alert-yellow/10 text-alert-yellow" };
     return { label: "In stock", classes: "bg-alert-green/10 text-alert-green" };
   };
+
+  const typeBadge = (t: ItemTypeErp) => {
+    if (t === "sellable") return { label: "Sellable", classes: "bg-emerald-500/15 text-emerald-800" };
+    if (t === "consumable") return { label: "Consumable", classes: "bg-orange-500/15 text-orange-900" };
+    return { label: "Equipment", classes: "bg-slate-500/10 text-slate-700" };
+  };
+
+  const actionClass =
+    "inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50";
 
   return (
     <div className="space-y-6">
@@ -84,10 +116,26 @@ export default function InventoryPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Item Name</label>
             <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">SKU (optional)</label>
+            <input type="text" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} className="w-full px-3 py-2 border rounded-md" placeholder="e.g. FISH-001" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Item type</label>
+            <select
+              value={formData.itemType}
+              onChange={(e) => setFormData({ ...formData, itemType: e.target.value as ItemTypeErp })}
+              className="w-full px-3 py-2 border rounded-md bg-white"
+            >
+              <option value="sellable">Sellable (fish / chicken)</option>
+              <option value="consumable">Consumable (feed)</option>
+              <option value="equipment">Equipment</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Opening Quantity</label>
@@ -139,7 +187,7 @@ export default function InventoryPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Cost Price</label>
+            <label className="block text-sm font-medium mb-1">Cost Price (per unit)</label>
             <input
               required
               inputMode="numeric"
@@ -151,11 +199,22 @@ export default function InventoryPage() {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium mb-1">Selling price (optional)</label>
+            <input
+              inputMode="numeric"
+              type="text"
+              value={formData.sellingPrice}
+              onChange={(e) => setFormData({ ...formData, sellingPrice: normalizeMoney(e.target.value) })}
+              className="w-full px-3 py-2 border rounded-md"
+              placeholder="POS can override"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium mb-1">Expiry Date (Optional)</label>
             <input type="date" value={formData.expiryDate} onChange={e => setFormData({...formData, expiryDate: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Low Stock Alert at</label>
+            <label className="block text-sm font-medium mb-1">Reorder / low stock at</label>
             <input
               required
               inputMode="numeric"
@@ -186,19 +245,29 @@ export default function InventoryPage() {
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Item</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Cost</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Stock</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Avg cost</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Sell</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Expiry</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {items.map((item) => {
-                const status = getStockStatus(item.quantity, item.minStockThreshold);
+                const t = resolveItemType(item);
+                const tb = typeBadge(t);
+                const th = item.reorderLevel ?? item.minStockThreshold ?? 0;
+                const status = getStockStatus(item.quantity, th);
+                const unitCost = Number(item.avgCost ?? item.costPrice ?? 0);
                 return (
                   <tr key={item.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-slate-900">{item.name}</div>
+                      {item.sku ? <div className="text-xs text-slate-500 mt-0.5">SKU: {item.sku}</div> : null}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${tb.classes}`}>{tb.label}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-bold text-slate-900 mb-1">{item.quantity} {item.unit}</div>
@@ -207,16 +276,47 @@ export default function InventoryPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                      Rs. {item.costPrice}
+                      Rs. {unitCost.toLocaleString()}
                       <span className="block text-xs text-slate-400 mt-0.5">per {item.unit}</span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">Rs. {Number(item.sellingPrice ?? 0).toLocaleString()}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                       {item.expiryDate || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      <button onClick={() => db.inventory.delete(item.id!)} className="text-alert-red hover:text-alert-red/80">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <td className="px-6 py-4 text-right text-sm font-medium">
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        {isSellable(item) && item.id ? (
+                          <Link href={`/orders?tab=Sales&itemId=${item.id}`} className={actionClass}>
+                            <ShoppingCart className="w-3.5 h-3.5 mr-1" aria-hidden />
+                            Sell
+                          </Link>
+                        ) : null}
+                        {isConsumable(item) && item.id ? (
+                          <Link href={`/consumption?itemId=${item.id}`} className={actionClass}>
+                            <Soup className="w-3.5 h-3.5 mr-1" aria-hidden />
+                            Use stock
+                          </Link>
+                        ) : null}
+                        {item.id ? (
+                          <Link href={`/stock-movement?itemId=${item.id}`} className={actionClass}>
+                            Adjust
+                          </Link>
+                        ) : null}
+                        {isSellable(item) && item.id ? (
+                          <Link href={`/loss-wastage?itemId=${item.id}`} className={actionClass}>
+                            <AlertTriangle className="w-3.5 h-3.5 mr-1" aria-hidden />
+                            Loss
+                          </Link>
+                        ) : null}
+                        {isConsumable(item) && item.id ? (
+                          <Link href={`/loss-wastage?itemId=${item.id}`} className={actionClass}>
+                            Damage
+                          </Link>
+                        ) : null}
+                        <button type="button" title="Delete item" onClick={() => db.inventory.delete(item.id!)} className="inline-flex items-center justify-center rounded-md p-2 text-alert-red hover:bg-red-50">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

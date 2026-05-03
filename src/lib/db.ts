@@ -1,9 +1,21 @@
 import Dexie, { type EntityTable } from 'dexie';
 
+/** ERP catalog + stock row (single-table item master). */
+export type ItemTypeErp = 'sellable' | 'consumable' | 'equipment';
+
 export interface InventoryItem {
   id?: number;
   uid?: string; // stable id for sync
   name: string;
+  sku?: string;
+  /** Fish/Chicken = sellable; Feed = consumable; optional equipment. */
+  itemType?: ItemTypeErp;
+  /** When false, hidden from default pickers (soft delete). */
+  active?: boolean;
+  /** Reorder / low-stock alert level (defaults from minStockThreshold in migration). */
+  reorderLevel?: number;
+  /** Moving average unit cost for inventory valuation. */
+  avgCost?: number;
   quantity: number;
   unit: string;
   costPrice: number;
@@ -37,6 +49,22 @@ export interface InventoryLoss {
   createdBy?: string;
 }
 
+export type ConsumptionCategory = 'feed_used' | 'farm_use' | 'spoilage';
+
+/** Feed / consumable usage (reduces stock + expense trail). */
+export interface ConsumptionLog {
+  id?: number;
+  uid?: string;
+  itemId: number;
+  quantity: number;
+  cost: number;
+  category: ConsumptionCategory;
+  notes?: string;
+  date: string;
+}
+
+export type PaymentStatusErp = 'paid' | 'partial' | 'due';
+
 export interface Sale {
   id?: number;
   uid?: string;
@@ -48,16 +76,24 @@ export interface Sale {
   customerName?: string;
   paymentType: 'Cash' | 'Credit';
   date: string;
+  customerId?: number;
+  paidAmount?: number;
+  dueAmount?: number;
+  paymentStatus?: PaymentStatusErp;
 }
 
 export interface Purchase {
   id?: number;
   uid?: string;
   supplierName: string;
+  supplierId?: number;
   itemId: number;
   quantity: number;
   totalCost: number;
   date: string;
+  paidAmount?: number;
+  dueAmount?: number;
+  paymentStatus?: PaymentStatusErp;
 }
 
 export interface DayBookEntry {
@@ -70,6 +106,9 @@ export interface DayBookEntry {
   category: 'Sale' | 'Purchase' | 'Transport' | 'Wage' | 'Other';
   accountId?: number; // FinancialAccount.id (Cash/Bank/QR)
   method?: 'Cash' | 'QR' | 'BankTransfer';
+  /** Optional link back to domain entity (consumption, loss, sale id as string, etc.). */
+  refType?: string;
+  refId?: string;
 }
 
 export interface LedgerAccount {
@@ -157,6 +196,7 @@ export class PatelaFarmDatabase extends Dexie {
   users!: EntityTable<User, 'id'>;
   roles!: EntityTable<Role, 'id'>;
   outbox!: EntityTable<SyncEvent, "id">;
+  consumptionLogs!: EntityTable<ConsumptionLog, "id">;
 
   constructor() {
     super('PatelaFarmDB_v2');
@@ -374,6 +414,60 @@ export class PatelaFarmDatabase extends Dexie {
       outbox: 'id, createdAt, pushedAt, entityType, entityId',
     });
 
+    this.version(10)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, name',
+        users: '++id, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+      })
+      .upgrade(async (tx) => {
+        const inv = tx.table("inventory");
+        await inv.toCollection().modify((row: Record<string, unknown>) => {
+          if (!row.itemType) row.itemType = "sellable";
+          if (row.active === undefined) row.active = true;
+          if (row.sku === undefined) row.sku = "";
+          const minT = Number(row.minStockThreshold ?? 0);
+          if (typeof row.reorderLevel !== "number") row.reorderLevel = minT;
+          const cp = Number(row.costPrice ?? 0);
+          if (typeof row.avgCost !== "number" || row.avgCost <= 0) row.avgCost = cp;
+        });
+
+        const sales = tx.table("sales");
+        await sales.toCollection().modify((row: Record<string, unknown>) => {
+          const total = Number(row.totalPrice ?? 0);
+          if (row.paymentType === "Cash") {
+            if (row.paidAmount === undefined) row.paidAmount = total;
+            if (row.dueAmount === undefined) row.dueAmount = 0;
+            if (!row.paymentStatus) row.paymentStatus = "paid";
+          } else {
+            if (row.paidAmount === undefined) row.paidAmount = 0;
+            if (row.dueAmount === undefined) row.dueAmount = total;
+            if (!row.paymentStatus) row.paymentStatus = "due";
+          }
+        });
+
+        const purchases = tx.table("purchases");
+        await purchases.toCollection().modify((row: Record<string, unknown>) => {
+          const total = Number(row.totalCost ?? 0);
+          if (!row.paymentStatus) {
+            row.paidAmount = total;
+            row.dueAmount = 0;
+            row.paymentStatus = "paid";
+          }
+        });
+      });
+
     this.inventory = this.table('inventory');
     this.inventoryLosses = this.table("inventoryLosses");
     this.stockMovement = this.table('stockMovement');
@@ -387,6 +481,7 @@ export class PatelaFarmDatabase extends Dexie {
     this.users = this.table('users');
     this.roles = this.table('roles');
     this.outbox = this.table("outbox");
+    this.consumptionLogs = this.table("consumptionLogs");
   }
 }
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { ShoppingCart, Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { db, type PaymentStatusErp } from "@/lib/db";
 import {
   addLedgerEntry,
   getOrCreateLedgerAccountId,
@@ -51,6 +52,7 @@ function parseSaleQuantityInput(s: string): number | null {
 }
 
 export default function OrdersPage() {
+  const searchParams = useSearchParams();
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
   const sales = useLiveQuery(() => db.sales.toArray()) || [];
   const purchases = useLiveQuery(() => db.purchases.toArray()) || [];
@@ -73,8 +75,19 @@ export default function OrdersPage() {
     return [WALK_IN_CUSTOMER_NAME, ...rest];
   }, [ledgerCustomers, sales]);
   
-  const [activeTab, setActiveTab] = useState<'Sales' | 'Purchases'>('Sales');
+  const [activeTab, setActiveTab] = useState<"Sales" | "Purchases">("Sales");
   const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const itemId = Number(searchParams.get("itemId") ?? 0);
+    if (tab === "Sales" || tab === "sales") setActiveTab("Sales");
+    if (itemId > 0) {
+      setSaleForm((s) => ({ ...s, itemId }));
+      setShowForm(true);
+      setSaleUnitPriceStr("");
+    }
+  }, [searchParams]);
   
   const [saleQuantityStr, setSaleQuantityStr] = useState("1");
   const [saleUnitPriceStr, setSaleUnitPriceStr] = useState("");
@@ -185,6 +198,9 @@ export default function OrdersPage() {
         customerName: customerNameResolved,
         paymentType: saleForm.paymentType,
         date,
+        paidAmount: isCredit ? 0 : totalPrice,
+        dueAmount: isCredit ? totalPrice : 0,
+        paymentStatus: (isCredit ? "due" : "paid") as PaymentStatusErp,
       };
       const saleId = await db.sales.add(sale);
 
