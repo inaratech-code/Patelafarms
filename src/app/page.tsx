@@ -27,7 +27,6 @@ export default function Dashboard() {
   const dayBook = useLiveQuery(() => db.dayBook.toArray());
   const purchases = useLiveQuery(() => db.purchases.toArray());
   const sales = useLiveQuery(() => db.sales.toArray());
-  const losses = useLiveQuery(() => db.inventoryLosses.toArray());
   const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray());
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray());
 
@@ -49,33 +48,6 @@ export default function Dashboard() {
   const salesRevenueThisMonth = (sales ?? [])
     .filter((s) => new Date(s.date).toISOString().slice(0, 7) === monthKey)
     .reduce((acc, s) => acc + s.totalPrice, 0);
-
-  const totalLossThisMonth = (losses ?? [])
-    .filter((l) => new Date(l.date).toISOString().slice(0, 7) === monthKey)
-    .reduce((acc, l) => acc + l.estimatedCost, 0);
-
-  const deadStockValueThisMonth = (losses ?? [])
-    .filter((l) => l.lossType === "Dead" && new Date(l.date).toISOString().slice(0, 7) === monthKey)
-    .reduce((acc, l) => acc + l.estimatedCost, 0);
-
-  const wastageTrend7 = useMemo(() => {
-    const now = new Date();
-    const days = 7;
-    const result: Array<{ x: string; y: number }> = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      const key = d.toISOString().split("T")[0];
-      result.push({ x: key, y: 0 });
-    }
-    const index = new Map(result.map((r, idx) => [r.x, idx]));
-    for (const l of losses ?? []) {
-      const key = new Date(l.date).toISOString().split("T")[0];
-      const i = index.get(key);
-      if (typeof i === "number") result[i] = { ...result[i], y: result[i].y + l.estimatedCost };
-    }
-    return result;
-  }, [losses]);
 
   const netProfitThisMonth = salesRevenueThisMonth - purchasesThisMonth - operatingExpensesThisMonth;
 
@@ -236,36 +208,6 @@ export default function Dashboard() {
         iconFg: "text-[#80a932]",
         spark: spark7,
       },
-      {
-        id: "lossMonth",
-        title: "Total Loss This Month",
-        value: `Rs. ${totalLossThisMonth.toLocaleString()}`,
-        deltaPct: 0,
-        icon: AlertTriangle,
-        iconBg: "bg-rose-500/10",
-        iconFg: "text-rose-700",
-        spark: wastageTrend7,
-      },
-      {
-        id: "deadStock",
-        title: "Dead Stock Value",
-        value: `Rs. ${deadStockValueThisMonth.toLocaleString()}`,
-        deltaPct: 0,
-        icon: AlertTriangle,
-        iconBg: "bg-rose-500/10",
-        iconFg: "text-rose-700",
-        spark: wastageTrend7,
-      },
-      {
-        id: "wastageTrend",
-        title: "Wastage Trend",
-        value: `Rs. ${wastageTrend7.reduce((a, p) => a + p.y, 0).toLocaleString()}`,
-        deltaPct: 0,
-        icon: TrendingUp,
-        iconBg: "bg-amber-500/10",
-        iconFg: "text-amber-700",
-        spark: wastageTrend7,
-      },
     ];
   }, [
     inventoryValue,
@@ -273,9 +215,6 @@ export default function Dashboard() {
     operatingExpensesThisMonth,
     salesRevenueThisMonth,
     netProfitThisMonth,
-    totalLossThisMonth,
-    deadStockValueThisMonth,
-    wastageTrend7,
     salesDeltaPct,
     spark7,
   ]);
