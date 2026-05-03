@@ -30,16 +30,36 @@ export async function ensureFarm() {
   const user = session?.user;
   if (!user?.id) throw new Error("Supabase auth user missing. Sign in (anonymous) first.");
 
-  const { data: farm, error: farmErr } = await supabase
+  // Idempotent: if farm insert succeeded but member insert / setFarmId failed, retry must not create another farm.
+  const { data: existingRows, error: listErr } = await supabase
     .from("farms")
-    .insert({ name: "Patela Farm", created_by: user.id })
     .select("id")
-    .single();
-  if (farmErr) throw farmErr;
-  const farmId = String((farm as any).id);
+    .eq("created_by", user.id)
+    .limit(1);
+  if (listErr) throw listErr;
+
+  let farmId: string;
+  if (existingRows?.length) {
+    farmId = String((existingRows[0] as { id: string }).id);
+  } else {
+    const { data: farm, error: farmErr } = await supabase
+      .from("farms")
+      .insert({ name: "Patela Farm", created_by: user.id })
+      .select("id")
+      .single();
+    if (farmErr) throw farmErr;
+    farmId = String((farm as { id: string }).id);
+  }
 
   const { error: memErr } = await supabase.from("farm_members").insert({ farm_id: farmId, user_id: user.id, role: "owner" });
-  if (memErr) throw memErr;
+  if (memErr) {
+    const msg = typeof memErr.message === "string" ? memErr.message : "";
+    const isDup =
+      (memErr as { code?: string }).code === "23505" ||
+      msg.includes("duplicate key") ||
+      msg.includes("unique constraint");
+    if (!isDup) throw memErr;
+  }
 
   setFarmId(farmId);
   return farmId;
