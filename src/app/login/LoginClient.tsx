@@ -53,19 +53,22 @@ export function LoginClient() {
 
         <form onSubmit={onSubmit} className="p-8 space-y-4">
           {!hasUsers ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-2">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-3">
               <p className="font-semibold">First-time setup</p>
-              <p>No users exist yet on this device. Do this once:</p>
-              <ol className="list-decimal list-inside space-y-1 pl-0.5">
-                <li>
-                  Open{" "}
-                  <Link href="/users" className="font-semibold underline">
-                    People → Users
-                  </Link>{" "}
-                  (allowed before login when there are no users).
-                </li>
-                <li>Create a role if needed (e.g. admin), then create a user with username and password (4–20 characters).</li>
-                <li>Return here and sign in with that username and password.</li>
+              <p>
+                <strong className="text-amber-950">You cannot use Login yet</strong> — there is no account on this
+                browser. Create one first (takes about a minute).
+              </p>
+              <Link
+                href="/users"
+                className="flex w-full items-center justify-center rounded-lg bg-primary px-4 py-3 text-base font-semibold text-white shadow-sm hover:bg-primary/90"
+              >
+                Create your first user (open Users)
+              </Link>
+              <p className="text-xs text-amber-950/80">Then come back to this page and sign in.</p>
+              <ol className="list-decimal list-inside space-y-1 pl-0.5 text-xs border-t border-amber-200/80 pt-2">
+                <li>On Users: create a role if needed (e.g. admin), then create a user (password 4–20 characters).</li>
+                <li>Return here and use Login with that username and password.</li>
               </ol>
             </div>
           ) : null}
@@ -120,6 +123,11 @@ export function LoginClient() {
           >
             {isWorking ? "Signing in..." : "Login"}
           </button>
+          {!hasUsers ? (
+            <p className="text-center text-xs text-slate-500">
+              Login stays disabled until at least one user exists. Use the blue button above.
+            </p>
+          ) : null}
         </form>
 
         <div className="px-8 pb-8 -mt-2">
