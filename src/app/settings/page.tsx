@@ -129,7 +129,7 @@ export default function SettingsPage() {
   const resetAllData = async () => {
     const ok = await requirePasswordConfirm({
       title: "Reset all data",
-      message: "This will delete ALL saved data (inventory, ledger, day book, users, roles, etc.) and reset app settings.",
+      message: "This will delete ALL saved data (inventory, ledger, day book, etc.) and reset app settings. Users will NOT be deleted.",
     });
     if (!ok) return;
 
@@ -139,17 +139,34 @@ export default function SettingsPage() {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (!k) continue;
-        if (k.startsWith("pf.")) keysToRemove.push(k);
+        if (!k.startsWith("pf.")) continue;
+        // Keep auth + farm linkage.
+        if (k === "pf.session.v1") continue;
+        if (k === "pf.farmId.v1") continue;
+        keysToRemove.push(k);
       }
       for (const k of keysToRemove) localStorage.removeItem(k);
 
-      clearSession();
-
-      // Wipe IndexedDB
-      await db.delete();
+      // Wipe IndexedDB data but keep users + roles.
+      await db.transaction("rw", db.tables, async () => {
+        await Promise.all([
+          db.inventory.clear(),
+          db.inventoryLosses.clear(),
+          db.stockMovement.clear(),
+          db.sales.clear(),
+          db.purchases.clear(),
+          db.dayBook.clear(),
+          db.ledgerAccounts.clear(),
+          db.ledgerEntries.clear(),
+          db.payments.clear(),
+          db.financialAccounts.clear(),
+          db.outbox.clear(),
+          db.consumptionLogs.clear(),
+        ]);
+      });
 
       // Reload to re-init DB + UI
-      location.href = "/login";
+      location.href = "/";
     } catch (e) {
       console.error(e);
       alert("Failed to reset data. Please try again.");
