@@ -3,11 +3,23 @@
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getFarmId } from "@/lib/farm";
 import { applyEvents, pullEvents, pushOutbox } from "@/lib/sync";
+import { db } from "@/lib/db";
 
 let _started = false;
 let _interval: number | null = null;
 let _channel: { unsubscribe?: () => any } | null = null;
 let _isTicking = false;
+let _tickTimer: number | null = null;
+let _hooksInstalled = false;
+
+function scheduleSoon() {
+  if (_tickTimer != null) return;
+  // Debounce rapid writes (e.g. purchase creates multiple events) into one push/pull.
+  _tickTimer = window.setTimeout(() => {
+    _tickTimer = null;
+    void tick();
+  }, 800);
+}
 
 function canUseSupabase() {
   try {
@@ -51,6 +63,17 @@ export async function startAutoSync() {
 
     const supabase = getSupabaseClient();
 
+    // Auto-push: any new local outbox event triggers a debounced sync.
+    if (!_hooksInstalled) {
+      _hooksInstalled = true;
+      db.outbox.hook("creating", () => scheduleSoon());
+      db.outbox.hook("updating", () => scheduleSoon());
+      window.addEventListener("online", scheduleSoon);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") scheduleSoon();
+      });
+    }
+
     // Realtime: apply new events immediately without requiring manual Sync.
     _channel = supabase
       .channel(`pf-events-${farmId}`)
@@ -80,12 +103,6 @@ export async function startAutoSync() {
       .subscribe();
 
     // Background polling: covers missed realtime events / offline periods.
-    const runNow = () => void tick();
-    window.addEventListener("online", runNow);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") runNow();
-    });
-
     _interval = window.setInterval(() => void tick(), 25_000);
     // First sync quickly after boot.
     void tick();
