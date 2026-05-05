@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { startAutoSync } from "@/lib/autoSync";
 
 export function AppShell(props: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -28,6 +29,12 @@ export function AppShell(props: { children: React.ReactNode }) {
     }
     setChecked(true);
   }, [isBootstrapAllowed, isLoginRoute, pathname]);
+
+  useEffect(() => {
+    if (isLoginRoute) return;
+    // Start background + realtime sync for all authenticated app pages.
+    void startAutoSync();
+  }, [isLoginRoute]);
 
   // Prevent brief flash of app before redirect.
   if (!checked && !isLoginRoute) return null;
