@@ -8,6 +8,7 @@ import { sha256Base64 } from "@/lib/auth";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
+import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 
 type PermissionId =
   | "dashboard"
@@ -615,6 +616,11 @@ export default function UsersPage() {
                       type="button"
                       onClick={async () => {
                         if (!user.id) return;
+                        const ok = await requirePasswordConfirm({
+                          title: "Delete user",
+                          message: `Delete user "${user.username}"?`,
+                        });
+                        if (!ok) return;
                         if (user.uid) {
                           await db.outbox.add(
                             makeSyncEvent({

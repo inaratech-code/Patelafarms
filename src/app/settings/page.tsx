@@ -19,6 +19,7 @@ import { getFarmId, ensureFarm, ensureFarmJoinCode } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 
 export default function SettingsPage() {
   const session = useMemo(() => getSession(), []);
@@ -126,7 +127,11 @@ export default function SettingsPage() {
   };
 
   const resetAllData = async () => {
-    if (!confirm("This will delete ALL saved data (inventory, ledger, day book, users, roles, etc.) and reset app settings. Continue?")) return;
+    const ok = await requirePasswordConfirm({
+      title: "Reset all data",
+      message: "This will delete ALL saved data (inventory, ledger, day book, users, roles, etc.) and reset app settings.",
+    });
+    if (!ok) return;
 
     try {
       // Clear app localStorage keys

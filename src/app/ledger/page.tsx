@@ -8,6 +8,7 @@ import Link from "next/link";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { CASH_LEDGER_NAME, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
+import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 
 function asDrCr(amount: number) {
   if (amount === 0) return { label: "0", side: "" as const };
@@ -46,7 +47,11 @@ export default function LedgerPage() {
     if (acct.name === CASH_LEDGER_NAME) return alert("This is the system cash ledger and cannot be deleted.");
     const hasEntries = entries.some((e) => e.accountId === accountId);
     if (hasEntries) return alert("Cannot delete: this account has ledger entries.");
-    if (!confirm(`Delete ledger account "${acct.name}"?`)) return;
+    const ok = await requirePasswordConfirm({
+      title: "Delete ledger account",
+      message: `Delete ledger account "${acct.name}"?`,
+    });
+    if (!ok) return;
 
     await db.transaction("rw", db.tables, async () => {
       if (acct.uid) {
