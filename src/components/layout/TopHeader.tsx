@@ -1,12 +1,13 @@
 "use client";
 
-import { Bell, Search, User, Menu } from "lucide-react";
+import { Bell, Search, User, Menu, RefreshCw, RotateCw } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useSidebar } from "@/components/sidebar/Sidebar";
 import { getSession } from "@/lib/auth";
 import { usePathname } from "next/navigation";
+import { syncNow } from "@/lib/sync";
 
 function subscribeOnlineStatus(onStoreChange: () => void) {
   window.addEventListener("online", onStoreChange);
@@ -32,6 +33,8 @@ export function TopHeader() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sessionTick, setSessionTick] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
 
   const session = useMemo(() => getSession(), [pathname, sessionTick]);
 
@@ -47,6 +50,28 @@ export function TopHeader() {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
+
+  useEffect(() => {
+    // Show rotate indicator only when on mobile + landscape orientation.
+    const mq = window.matchMedia("(max-width: 640px) and (orientation: landscape)");
+    const update = () => setIsLandscapeMobile(Boolean(mq.matches));
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+
+  const runSync = async () => {
+    if (isSyncing) return;
+    if (!isOnline) return;
+    try {
+      setIsSyncing(true);
+      await syncNow();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between min-h-14 h-14 sm:h-16 px-3 sm:px-5 lg:px-8 pt-[env(safe-area-inset-top,0px)] bg-white/90 backdrop-blur border-b border-[#e2e8f0]">
@@ -88,6 +113,18 @@ export function TopHeader() {
           )} />
           {isOnline ? "Synced" : "Offline"}
         </div>
+
+        <button
+          type="button"
+          onClick={() => void runSync()}
+          disabled={!isOnline || isSyncing}
+          title={!isOnline ? "Offline" : isSyncing ? "Syncing…" : "Sync now"}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw className={cn("w-4 h-4 text-slate-500", isSyncing ? "animate-spin" : "")} />
+          <span className="hidden sm:inline">Sync</span>
+          {isLandscapeMobile ? <RotateCw className="w-4 h-4 text-slate-400" /> : null}
+        </button>
 
         <Link href="/alerts" className="p-1 text-slate-400 bg-white rounded-full hover:text-slate-500 focus:outline-none">
           <span className="sr-only">View notifications</span>
