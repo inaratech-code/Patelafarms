@@ -4,9 +4,6 @@ import { newUid } from "@/lib/uid";
 
 export type LedgerAccountType = LedgerAccount["type"];
 
-/** Default label for POS/counter sales where no customer is tracked. */
-export const WALK_IN_CUSTOMER_NAME = "Walk in customer";
-
 /** Single ledger account used to track cash sales + expenses as a running balance. */
 export const CASH_LEDGER_NAME = "Cash sales & expenses";
 

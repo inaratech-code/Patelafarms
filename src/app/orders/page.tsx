@@ -9,7 +9,6 @@ import {
   addLedgerEntry,
   getOrCreateLedgerAccountId,
   getOrCreateCashLedgerAccountId,
-  WALK_IN_CUSTOMER_NAME,
 } from "@/lib/ledger";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
@@ -70,11 +69,9 @@ export default function OrdersPage() {
       const n = s.customerName?.trim();
       if (n) names.add(n);
     }
-    names.add(WALK_IN_CUSTOMER_NAME);
     const rest = Array.from(names)
-      .filter((n) => n !== WALK_IN_CUSTOMER_NAME)
       .sort((a, b) => a.localeCompare(b));
-    return [WALK_IN_CUSTOMER_NAME, ...rest];
+    return rest;
   }, [ledgerCustomers, sales]);
 
   const supplierOptions = useMemo(
@@ -106,7 +103,7 @@ export default function OrdersPage() {
     financialAccountId: number;
   }>({
     itemId: 0,
-    customerName: WALK_IN_CUSTOMER_NAME,
+    customerName: "",
     paymentType: "Cash",
     method: "Cash",
     financialAccountId: 0,
@@ -184,9 +181,8 @@ export default function OrdersPage() {
     const date = new Date().toISOString();
 
     const isCredit = saleForm.paymentType === "Credit";
-    const customerNameResolved =
-      saleForm.customerName.trim() || WALK_IN_CUSTOMER_NAME;
-    if (isCredit && !customerNameResolved.trim()) {
+    const customerNameResolved = saleForm.customerName.trim();
+    if (isCredit && !customerNameResolved) {
       return alert("Customer name is required for Credit sales (for ledger).");
     }
 
@@ -200,7 +196,7 @@ export default function OrdersPage() {
         quantity: qtyParsed,
         totalPrice,
         unitPrice,
-        customerName: customerNameResolved,
+        customerName: customerNameResolved || undefined,
         paymentType: saleForm.paymentType,
         date,
         paidAmount: isCredit ? 0 : totalPrice,
@@ -333,7 +329,7 @@ export default function OrdersPage() {
     setSaleUnitPriceStr("");
     setSaleForm({
       itemId: 0,
-      customerName: WALK_IN_CUSTOMER_NAME,
+      customerName: "",
       paymentType: "Cash",
       method: "Cash",
       financialAccountId: 0,
@@ -811,7 +807,12 @@ export default function OrdersPage() {
                     <tr key={sale.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(sale.date).toLocaleDateString()}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                        {sale.customerName?.trim() || WALK_IN_CUSTOMER_NAME} ({sale.paymentType})
+                        {sale.customerName?.trim()
+                          ? sale.customerName.trim()
+                          : sale.paymentType === "Cash"
+                            ? "Cash sale"
+                            : "Credit sale"}{" "}
+                        ({sale.paymentType})
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
                         {sale.quantity}x {item?.name || "Unknown"}
