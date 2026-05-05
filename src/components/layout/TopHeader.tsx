@@ -1,11 +1,11 @@
 "use client";
 
-import { Bell, User, Menu, RefreshCw, RotateCw } from "lucide-react";
+import { Bell, User, Menu, RefreshCw, RotateCw, LogOut } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useSidebar } from "@/components/sidebar/Sidebar";
-import { getSession } from "@/lib/auth";
+import { clearSession, getSession } from "@/lib/auth";
 import { usePathname } from "next/navigation";
 import { syncNow } from "@/lib/sync";
 
@@ -80,6 +80,12 @@ export function TopHeader() {
     }
   };
 
+  const logout = () => {
+    clearSession();
+    setMenuOpen(false);
+    window.location.replace("/login");
+  };
+
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between min-h-14 h-14 sm:h-16 px-3 sm:px-5 lg:px-8 pt-[env(safe-area-inset-top,0px)] bg-white/90 backdrop-blur border-b border-[#e2e8f0]">
       <button
@@ -149,6 +155,17 @@ export function TopHeader() {
                 <div className="px-3 py-2 border-b border-slate-100">
                   <div className="text-xs text-slate-500">Signed in as</div>
                   <div className="text-sm font-semibold text-slate-900 truncate">{session?.username ?? "User"}</div>
+                </div>
+                <div className="p-2">
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="w-full inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                    aria-label="Logout"
+                    title="Logout"
+                  >
+                    <LogOut className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
             </>
