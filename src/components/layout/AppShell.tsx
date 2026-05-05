@@ -39,11 +39,13 @@ export function AppShell(props: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
+    // Wait until the role record is loaded; otherwise we can get a redirect loop on first render.
+    if (session?.roleId && role === null) return;
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     if (!canAccessPath(perms, pathname || "/")) {
       window.location.replace(pickDefaultRoute(perms));
     }
-  }, [isBootstrapAllowed, isLoginRoute, pathname, role?.permissions, session?.userId]);
+  }, [isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
 
   useEffect(() => {
     if (isLoginRoute) return;
