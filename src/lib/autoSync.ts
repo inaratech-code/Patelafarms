@@ -38,7 +38,6 @@ async function tick() {
 export async function startAutoSync() {
   if (typeof window === "undefined") return;
   if (_started) return;
-  _started = true;
 
   if (!canUseSupabase()) return;
 
@@ -48,6 +47,7 @@ export async function startAutoSync() {
     // Auto-sync should only run after this browser is linked to an existing farm id.
     const farmId = getFarmId();
     if (!farmId) return;
+    _started = true;
 
     const supabase = getSupabaseClient();
 

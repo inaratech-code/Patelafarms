@@ -36,6 +36,13 @@ export function AppShell(props: { children: React.ReactNode }) {
     void startAutoSync();
   }, [isLoginRoute]);
 
+  useEffect(() => {
+    if (isLoginRoute) return;
+    // If the device links a farm after initial boot, retry starting autosync.
+    const id = window.setInterval(() => void startAutoSync(), 4000);
+    return () => window.clearInterval(id);
+  }, [isLoginRoute]);
+
   // Prevent brief flash of app before redirect.
   if (!checked && !isLoginRoute) return null;
 
