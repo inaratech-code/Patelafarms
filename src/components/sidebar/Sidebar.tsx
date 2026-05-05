@@ -11,6 +11,7 @@ import { SidebarItem } from "@/components/sidebar/SidebarItem";
 import { sidebarGroups, sidebarTopLevel, type SidebarGroupId } from "@/components/sidebar/sidebarConfig";
 import { LogOut, Menu, X } from "lucide-react";
 import { clearSession, getSession } from "@/lib/auth";
+import { canAccessPath, normalizePermissions } from "@/lib/rbac";
 
 type SidebarContextValue = {
   openMobile: () => void;
@@ -117,6 +118,12 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
   const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray()) || [];
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
   const session = useMemo(() => getSession(), [pathname]);
+  const role = useLiveQuery(async () => {
+    const roleId = session?.roleId ?? 0;
+    if (!roleId) return null;
+    return (await db.roles.get(roleId)) ?? null;
+  }, [session?.roleId]);
+  const perms = useMemo(() => normalizePermissions(role?.permissions as string[] | undefined), [role?.permissions]);
 
   const alertBadge = useMemo(
     () => computeAlertBadge({ inventory, ledgerAccounts, ledgerEntries }),
@@ -191,47 +198,59 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
       </div>
 
       <nav className={cn("p-3 space-y-2 flex-1 overflow-y-auto")}>
-        {sidebarTopLevel.slice(0, 2).map((item) => (
-          <SidebarItem
-            key={item.id}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={activeHref === item.href}
-            isCollapsed={isCollapsed}
-            badgeCount={item.badge === "alerts" ? alertBadge : undefined}
-            onNavigate={props.onNavigate}
-          />
-        ))}
+        {sidebarTopLevel
+          .slice(0, 2)
+          .filter((item) => canAccessPath(perms, item.href))
+          .map((item) => (
+            <SidebarItem
+              key={item.id}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={activeHref === item.href}
+              isCollapsed={isCollapsed}
+              badgeCount={item.badge === "alerts" ? alertBadge : undefined}
+              onNavigate={props.onNavigate}
+            />
+          ))}
 
         <div className="h-px bg-slate-100 my-2" />
 
-        {sidebarGroups.map((g) => (
-          <SidebarGroup
-            key={g.id}
-            group={g}
-            isOpen={openGroups[g.id]}
-            onToggle={() => toggleGroup(g.id)}
-            activeHref={activeHref}
-            isCollapsed={isCollapsed}
-            onNavigate={props.onNavigate}
-          />
-        ))}
+        {sidebarGroups
+          .map((g) => ({
+            ...g,
+            items: g.items.filter((it) => canAccessPath(perms, it.href)),
+          }))
+          .filter((g) => g.items.length > 0)
+          .map((g) => (
+            <SidebarGroup
+              key={g.id}
+              group={g}
+              isOpen={openGroups[g.id]}
+              onToggle={() => toggleGroup(g.id)}
+              activeHref={activeHref}
+              isCollapsed={isCollapsed}
+              onNavigate={props.onNavigate}
+            />
+          ))}
 
         <div className="h-px bg-slate-100 my-2" />
 
-        {sidebarTopLevel.slice(2).map((item) => (
-          <SidebarItem
-            key={item.id}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={activeHref === item.href}
-            isCollapsed={isCollapsed}
-            badgeCount={item.badge === "alerts" ? alertBadge : undefined}
-            onNavigate={props.onNavigate}
-          />
-        ))}
+        {sidebarTopLevel
+          .slice(2)
+          .filter((item) => canAccessPath(perms, item.href))
+          .map((item) => (
+            <SidebarItem
+              key={item.id}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={activeHref === item.href}
+              isCollapsed={isCollapsed}
+              badgeCount={item.badge === "alerts" ? alertBadge : undefined}
+              onNavigate={props.onNavigate}
+            />
+          ))}
       </nav>
 
       <div className={cn("p-4 border-t border-slate-200 text-xs text-slate-500", isCollapsed ? "text-center" : "")}>

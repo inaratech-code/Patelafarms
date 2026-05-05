@@ -19,6 +19,7 @@ import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getSyncState, setSyncState } from "@/lib/syncState";
 import { ensureFarm, getFarmId } from "@/lib/farm";
 import { makeSyncEvent } from "@/lib/syncEvents";
+import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -355,6 +356,12 @@ export async function applyEvents(events: SyncEvent[]) {
 
       // Apply minimal event types we currently emit.
       const payload = asRecord(e.payload);
+      if (e.entityType === "farm.reset" && e.op === "create") {
+        // Clear local business data; keep users/roles so logins still work.
+        // Do this early so any subsequent events in the batch don't resurrect old state.
+        await resetBusinessDataLocal({ keepUsersAndRoles: true });
+        setSyncState({});
+      }
       if (e.entityType === "inventory.item" && e.op === "create") {
         const item = asRecord(payload?.item);
         const uid = item ? asString(item.uid) : undefined;

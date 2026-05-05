@@ -9,26 +9,41 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { startAutoSync } from "@/lib/autoSync";
+import { canAccessPath, normalizePermissions, pickDefaultRoute } from "@/lib/rbac";
 
 export function AppShell(props: { children: React.ReactNode }) {
   const pathname = usePathname();
   const users = useLiveQuery(() => db.users.toArray());
   const [checked, setChecked] = useState(false);
+  const session = useMemo(() => getSession(), [pathname]);
+  const role = useLiveQuery(async () => {
+    const roleId = session?.roleId ?? 0;
+    if (!roleId) return null;
+    return (await db.roles.get(roleId)) ?? null;
+  }, [session?.roleId]);
 
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
   const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
 
   useEffect(() => {
-    const s = getSession();
-    const authed = Boolean(s?.userId);
+    const authed = Boolean(session?.userId);
     if (!isLoginRoute && !isBootstrapAllowed && !authed) {
       // In dev (Turbopack), next/navigation can dispatch before router init.
       // Use a hard navigation for auth gating to avoid that class of error.
       window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
     }
     setChecked(true);
-  }, [isBootstrapAllowed, isLoginRoute, pathname]);
+  }, [isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
+
+  useEffect(() => {
+    if (isLoginRoute || isBootstrapAllowed) return;
+    if (!session?.userId) return;
+    const perms = normalizePermissions(role?.permissions as string[] | undefined);
+    if (!canAccessPath(perms, pathname || "/")) {
+      window.location.replace(pickDefaultRoute(perms));
+    }
+  }, [isBootstrapAllowed, isLoginRoute, pathname, role?.permissions, session?.userId]);
 
   useEffect(() => {
     if (isLoginRoute) return;

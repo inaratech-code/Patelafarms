@@ -24,6 +24,7 @@ Open `http://localhost:3000`.
    - **`supabase/join_farm.sql`** (adds `join_code` on farms + `join_farm()` RPC so a second browser can join the same farm and sync users/data.)
    - **`supabase/fix_is_farm_member_rls_recursion.sql`** (if you see *stack depth limit exceeded* / `54001` when reading `farms` — makes `is_farm_member` `SECURITY DEFINER` so RLS policies do not recurse.)
    - **`supabase/farm_cloud_logins.sql`** (same **username + password** on a new browser joins the farm without Farm ID / join code — required for that login flow.)
+   - **`supabase/reset_farm_data.sql`** (enables **Reset All Data (all devices)** by deleting the farm’s cloud events and broadcasting a `farm.reset` marker event)
 4. Create `.env.local` (not committed) with:
 
 ```bash

@@ -84,6 +84,8 @@ export async function startAutoSync() {
         { event: "INSERT", schema: "public", table: "events", filter: `farm_id=eq.${farmId}` },
         async (payload: any) => {
           try {
+            if (localStorage.getItem("pf.resetting") === "1") return;
+            if (localStorage.getItem("pf.syncPaused") === "1") return;
             const row = payload?.new;
             if (!row?.id) return;
             await applyEvents([

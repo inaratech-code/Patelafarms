@@ -20,6 +20,7 @@ import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
+import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 
 export default function SettingsPage() {
   const session = useMemo(() => getSession(), []);
@@ -145,64 +146,33 @@ export default function SettingsPage() {
     if (isResetting) return;
     const ok = await requirePasswordConfirm({
       title: "Reset all data",
-      message: "This will delete ALL saved data (inventory, ledger, day book, etc.) and reset app settings. Users will NOT be deleted.",
+      message:
+        "This will delete ALL business data on ALL devices (inventory, ledger, day book, etc.) and reset app settings. Users will NOT be deleted.",
     });
     if (!ok) return;
 
     try {
       setIsResetting(true);
-      localStorage.setItem("pf.resetting", "1");
-      // Prevent data from being immediately re-pulled from the cloud.
-      localStorage.setItem("pf.syncPaused", "1");
-      // Clear app localStorage keys
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k) continue;
-        if (!k.startsWith("pf.")) continue;
-        // Keep auth + farm linkage.
-        if (k === "pf.session.v1") continue;
-        if (k === "pf.farmId.v1") continue;
-        keysToRemove.push(k);
-      }
-      for (const k of keysToRemove) localStorage.removeItem(k);
-
-      // Wipe IndexedDB data but keep users + roles.
-      // Avoid wide transactions on mobile Safari / low-memory devices.
-      const clears: Array<[string, () => Promise<void>]> = [
-        ["inventory", () => db.inventory.clear()],
-        ["inventoryLosses", () => db.inventoryLosses.clear()],
-        ["stockMovement", () => db.stockMovement.clear()],
-        ["sales", () => db.sales.clear()],
-        ["purchases", () => db.purchases.clear()],
-        ["dayBook", () => db.dayBook.clear()],
-        ["ledgerAccounts", () => db.ledgerAccounts.clear()],
-        ["ledgerEntries", () => db.ledgerEntries.clear()],
-        ["payments", () => db.payments.clear()],
-        ["financialAccounts", () => db.financialAccounts.clear()],
-        ["outbox", () => db.outbox.clear()],
-        ["consumptionLogs", () => db.consumptionLogs.clear()],
-      ];
-
-      const failures: string[] = [];
-      for (const [name, fn] of clears) {
-        try {
-          await fn();
-        } catch (e) {
-          failures.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-      if (failures.length) {
-        throw new Error(`Some tables could not be cleared:\n- ${failures.join("\n- ")}`);
+      if (!navigator.onLine) {
+        throw new Error("You must be online to reset cloud data for all devices.");
       }
 
-      localStorage.removeItem("pf.resetting");
+      await ensureSupabaseAuth();
+      const supabase = getSupabaseClient();
+      const farmId = getFarmId();
+      if (!farmId) throw new Error("This device is not linked to a farm yet.");
+
+      const { error } = await supabase.rpc("reset_farm_data", { p_farm_id: farmId });
+      if (error) throw error;
+
+      // Clear local business data (users/roles preserved).
+      await resetBusinessDataLocal({ keepUsersAndRoles: true });
+
       // Reload to re-init DB + UI
       window.location.replace("/");
     } catch (e) {
       console.error(e);
       alert(`Failed to reset data: ${e instanceof Error ? e.message : String(e)}`);
-      localStorage.removeItem("pf.resetting");
       setIsResetting(false);
     }
   };
@@ -518,7 +488,7 @@ export default function SettingsPage() {
             {isResetting ? "Resetting…" : "Reset All Data"}
           </button>
           <div className="mt-2 text-xs text-slate-500">
-            This deletes all locally stored data (IndexedDB) and clears app preferences (localStorage).
+            This deletes cloud + local business data for this farm so all devices become empty (users/roles stay).
           </div>
         </div>
       </div>
