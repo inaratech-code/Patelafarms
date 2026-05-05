@@ -570,6 +570,45 @@ export class PatelaFarmDatabase extends Dexie {
         });
       });
 
+    // Remove legacy "Walk in customer" label from persisted data.
+    this.version(15)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, uid, name',
+        users: '++id, uid, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+      })
+      .upgrade(async (tx) => {
+        const WALK_IN = "Walk in customer";
+        const CASH_LEDGER = "Cash sales & expenses";
+
+        const ledgerAccounts = tx.table("ledgerAccounts");
+        const sales = tx.table("sales");
+
+        // Update any old sales rows to not display the walk-in label.
+        await sales.toCollection().modify((row: Record<string, unknown>) => {
+          if (row.customerName === WALK_IN) delete row.customerName;
+        });
+
+        // Rename the legacy ledger account if present.
+        const all = (await ledgerAccounts.toArray()) as Array<Record<string, unknown>>;
+        const hasCashLedger = all.some((a) => a.name === CASH_LEDGER);
+        await ledgerAccounts.toCollection().modify((row: Record<string, unknown>) => {
+          if (row.name !== WALK_IN) return;
+          row.name = hasCashLedger ? `${CASH_LEDGER} (legacy)` : CASH_LEDGER;
+        });
+      });
+
     this.inventory = this.table('inventory');
     this.inventoryLosses = this.table("inventoryLosses");
     this.stockMovement = this.table('stockMovement');
