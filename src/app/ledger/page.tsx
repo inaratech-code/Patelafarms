@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
-import { getOrCreateWalkInCustomerAccountId } from "@/lib/ledger";
+import { getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 
 function asDrCr(amount: number) {
   if (amount === 0) return { label: "0", side: "" as const };
@@ -42,7 +42,7 @@ export default function LedgerPage() {
 
   useEffect(() => {
     void db.transaction("rw", db.tables, async () => {
-      await getOrCreateWalkInCustomerAccountId();
+      await getOrCreateCashLedgerAccountId();
     });
   }, []);
 

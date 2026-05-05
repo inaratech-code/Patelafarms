@@ -4,16 +4,19 @@ import { newUid } from "@/lib/uid";
 
 export type LedgerAccountType = LedgerAccount["type"];
 
-/** Ledger party used for typical cash / counter sales (no named credit customer). */
+/** Default label for POS/counter sales where no customer is tracked. */
 export const WALK_IN_CUSTOMER_NAME = "Walk in customer";
 
+/** Single ledger account used to track cash sales + expenses as a running balance. */
+export const CASH_LEDGER_NAME = "Cash sales & expenses";
+
 /**
- * Ensures a Customer ledger account for counter / walk-in cash sales, with the same
- * outbox sync as accounts created on the Ledger page.
+ * Ensures a single ledger account to track cash balance movements (sales in, expenses out),
+ * with the same outbox sync as accounts created on the Ledger page.
  */
-export async function getOrCreateWalkInCustomerAccountId() {
+export async function getOrCreateCashLedgerAccountId() {
   const existing = await db.ledgerAccounts
-    .where({ name: WALK_IN_CUSTOMER_NAME, type: "Customer" })
+    .where({ name: CASH_LEDGER_NAME, type: "Customer" })
     .first();
 
   if (typeof existing?.id === "number") {
@@ -24,18 +27,18 @@ export async function getOrCreateWalkInCustomerAccountId() {
   const uid = newUid();
   const account: LedgerAccount = {
     uid,
-    name: WALK_IN_CUSTOMER_NAME,
+    name: CASH_LEDGER_NAME,
     type: "Customer",
   };
   const id = await db.ledgerAccounts.add(account);
-  if (typeof id !== "number") throw new Error("Failed to create walk-in ledger account");
+  if (typeof id !== "number") throw new Error("Failed to create cash ledger account");
 
   await db.outbox.add(
     makeSyncEvent({
       entityType: "ledger.account",
       entityId: uid,
       op: "create",
-      payload: { id, account: { uid, name: WALK_IN_CUSTOMER_NAME, type: "Customer" as const } },
+      payload: { id, account: { uid, name: CASH_LEDGER_NAME, type: "Customer" as const } },
     })
   );
 

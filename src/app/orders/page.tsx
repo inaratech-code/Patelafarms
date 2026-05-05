@@ -8,7 +8,7 @@ import { db, type PaymentStatusErp } from "@/lib/db";
 import {
   addLedgerEntry,
   getOrCreateLedgerAccountId,
-  getOrCreateWalkInCustomerAccountId,
+  getOrCreateCashLedgerAccountId,
   WALK_IN_CUSTOMER_NAME,
 } from "@/lib/ledger";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
@@ -191,9 +191,7 @@ export default function OrdersPage() {
     }
 
     await db.transaction('rw', db.tables, async () => {
-      if (!isCredit && customerNameResolved === WALK_IN_CUSTOMER_NAME) {
-        await getOrCreateWalkInCustomerAccountId();
-      }
+      const cashLedgerAccountId = !isCredit ? await getOrCreateCashLedgerAccountId() : null;
 
       // 1. Record Sale
       const sale = {
@@ -253,12 +251,33 @@ export default function OrdersPage() {
         );
       }
 
-      // 5. Ledger entry (credit only)
+      // 5. Ledger entry (cash: cash ledger; credit: customer ledger)
       let ledgerAccountId: number | null = null;
       let ledgerEntryId: number | null = null;
       let ledgerAccount: any = null;
       let ledgerEntry: any = null;
-      if (isCredit) {
+      if (!isCredit && cashLedgerAccountId) {
+        ledgerAccountId = cashLedgerAccountId;
+        const acct = await db.ledgerAccounts.get(ledgerAccountId);
+        ledgerAccount = acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null;
+        ledgerEntryId = (await addLedgerEntry({
+          accountId: ledgerAccountId,
+          date,
+          description: `Cash sale: ${qtyParsed} ${item.unit} ${item.name} @ Rs.${unitPrice}/${item.unit}`,
+          debit: totalPrice,
+          credit: 0,
+        })) as number;
+        const entryRow = await db.ledgerEntries.get(ledgerEntryId);
+        ledgerEntry = entryRow?.uid
+          ? {
+              uid: entryRow.uid,
+              date: entryRow.date,
+              description: entryRow.description,
+              debit: entryRow.debit,
+              credit: entryRow.credit,
+            }
+          : null;
+      } else if (isCredit) {
         ledgerAccountId = await getOrCreateLedgerAccountId({ name: customerNameResolved, type: "Customer" });
         const acct = await db.ledgerAccounts.get(ledgerAccountId);
         ledgerAccount = acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null;
@@ -280,16 +299,16 @@ export default function OrdersPage() {
             }
           : null;
 
-        if (ledgerAccount?.uid && ledgerEntry?.uid) {
-          await db.outbox.add(
-            makeSyncEvent({
-              entityType: "ledger.entry",
-              entityId: ledgerEntry.uid,
-              op: "create",
-              payload: { account: ledgerAccount, entry: ledgerEntry },
-            })
-          );
-        }
+      }
+      if (ledgerAccount?.uid && ledgerEntry?.uid) {
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "ledger.entry",
+            entityId: ledgerEntry.uid,
+            op: "create",
+            payload: { account: ledgerAccount, entry: ledgerEntry },
+          })
+        );
       }
 
       await db.outbox.add(
