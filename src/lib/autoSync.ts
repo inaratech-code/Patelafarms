@@ -1,7 +1,7 @@
 "use client";
 
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
-import { ensureFarm, getFarmId } from "@/lib/farm";
+import { getFarmId } from "@/lib/farm";
 import { applyEvents, pullEvents, pushOutbox } from "@/lib/sync";
 
 let _started = false;
@@ -44,7 +44,9 @@ export async function startAutoSync() {
 
   try {
     await ensureSupabaseAuth();
-    const farmId = await ensureFarm();
+    // Important: do NOT create a new farm automatically.
+    // Auto-sync should only run after this browser is linked to an existing farm id.
+    const farmId = getFarmId();
     if (!farmId) return;
 
     const supabase = getSupabaseClient();
