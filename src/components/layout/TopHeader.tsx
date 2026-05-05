@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Search, User, Menu, RefreshCw, RotateCw } from "lucide-react";
+import { Bell, User, Menu, RefreshCw, RotateCw } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -84,23 +84,7 @@ export function TopHeader() {
         <Menu className="w-5 h-5" />
       </button>
 
-      <div className="flex flex-1">
-        <form className="flex w-full min-w-0 lg:ml-0" action="#" method="GET">
-          <label htmlFor="search-field" className="sr-only">Search</label>
-          <div className="relative w-full text-slate-400 focus-within:text-slate-600">
-            <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-              <Search className="w-5 h-5" aria-hidden="true" />
-            </div>
-            <input
-              id="search-field"
-              className="block w-full min-h-10 py-2 pl-8 pr-2 text-sm text-slate-900 placeholder-slate-500 border-transparent focus:outline-none focus:ring-0 focus:border-transparent sm:text-sm bg-transparent"
-              placeholder="Search…"
-              type="search"
-              name="search"
-            />
-          </div>
-        </form>
-      </div>
+      <div className="flex-1" />
 
       <div className="flex items-center shrink-0 ml-2 sm:ml-4 space-x-2 sm:space-x-4 lg:ml-6">
         <div className={cn(
