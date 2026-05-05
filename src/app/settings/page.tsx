@@ -186,7 +186,7 @@ export default function SettingsPage() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden max-w-2xl">
         <div className="p-6 border-b border-slate-100">
           <h2 className="text-lg font-medium text-slate-900">Sync</h2>
-          <p className="mt-1 text-sm text-slate-500">Sync offline data to Supabase when online.</p>
+          <p className="mt-1 text-sm text-slate-500">Keeps your data the same on all your devices when you’re online.</p>
         </div>
         <div className="p-6 space-y-4">
           {syncPaused ? (
@@ -226,21 +226,20 @@ export default function SettingsPage() {
 
           <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-700">
             <p className="text-xs leading-relaxed">
-              <span className="font-semibold text-slate-900">Other devices:</span> use the same username and password on
-              the Login page (run <span className="font-mono">farm_cloud_logins.sql</span> in Supabase if you have not
-              yet). After one successful sign-in on this farm, credentials stay registered for new browsers.
+              <span className="font-semibold text-slate-900">Other phones/computers:</span> just use the same username
+              and password on the Login page. Keep internet on for the first login on a new device.
             </p>
           </div>
 
           <details className="rounded-lg border border-slate-200 text-sm open:pb-3">
             <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-slate-800">
-              Optional: Farm ID and join code (fallback link)
+              Optional: Link a new device with a code
             </summary>
             <div className="px-4 pb-3 space-y-3 text-xs text-slate-600 border-t border-slate-200/80 pt-3">
               {farmLink ? (
                 <>
                   <div>
-                    <div className="text-slate-500">Farm ID</div>
+                    <div className="text-slate-500">Farm code</div>
                     <div className="mt-1 flex gap-2 items-start">
                       <div className="font-mono text-xs text-slate-900 break-all flex-1">{farmLink.id}</div>
                       <button
@@ -253,7 +252,7 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-500">Join code</div>
+                    <div className="text-slate-500">Link code</div>
                     <div className="mt-1 flex gap-2 items-center">
                       <div className="font-mono text-base font-bold tracking-widest text-slate-900">
                         {farmLink.joinCode || "—"}
@@ -275,7 +274,7 @@ export default function SettingsPage() {
               ) : getFarmId() ? (
                 <div className="text-slate-500">Loading…</div>
               ) : (
-                <div className="text-slate-500">Use Sync once to create your farm, then open this section.</div>
+                <div className="text-slate-500">Turn on Sync once, then open this section.</div>
               )}
             </div>
           </details>
