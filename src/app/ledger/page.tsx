@@ -83,7 +83,7 @@ export default function LedgerPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Entity Name</label>
             <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
@@ -109,7 +109,7 @@ export default function LedgerPage() {
             <p className="mt-1">Create an account to start tracking ledgers.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {accounts.map(account => (
             <Link
               key={account.id}

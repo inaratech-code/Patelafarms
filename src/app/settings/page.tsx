@@ -163,7 +163,7 @@ export default function SettingsPage() {
           <p className="mt-1 text-sm text-slate-500">Sync offline data to Supabase when online.</p>
         </div>
         <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div className="rounded-lg border border-slate-200 p-4">
               <div className="text-xs text-slate-500">Device ID</div>
               <div className="mt-1 font-mono text-xs text-slate-900 break-all">{deviceId}</div>

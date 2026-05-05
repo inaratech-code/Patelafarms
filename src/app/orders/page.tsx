@@ -491,7 +491,7 @@ export default function OrdersPage() {
       </div>
 
       {showForm && activeTab === 'Sales' && (
-        <form onSubmit={handleSaleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <form onSubmit={handleSaleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Select Item</label>
             <select
@@ -596,7 +596,7 @@ export default function OrdersPage() {
 
       {showForm && activeTab === 'Purchases' && (
         <form onSubmit={handlePurchaseSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Supplier</label>
               <input
@@ -639,7 +639,7 @@ export default function OrdersPage() {
           </div>
 
           {purchaseForm.paymentType === "Cash" ? (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Payment Mode</label>
                 <select
@@ -670,7 +670,7 @@ export default function OrdersPage() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
             <div>
               <label className="block text-sm font-medium mb-1">Select Item</label>
               <select

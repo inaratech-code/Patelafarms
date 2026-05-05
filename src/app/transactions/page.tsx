@@ -42,7 +42,7 @@ export default function TransactionsPage() {
         <p className="mt-1 text-sm text-slate-500">Jump to sales, purchases, expenses, or payments.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {links.map((l) => {
           const Icon = l.icon;
           return (

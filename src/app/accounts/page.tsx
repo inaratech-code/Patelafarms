@@ -59,7 +59,7 @@ export default function AccountsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm p-6">
           <div className="text-sm text-[#64748b] font-medium">Cash</div>
           <div className="mt-2 text-2xl font-semibold text-[#0f172a]">Rs. {totals.cash.toLocaleString()}</div>
@@ -79,7 +79,7 @@ export default function AccountsPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-[#e2e8f0] grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-[#e2e8f0] grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
             <label className="block text-sm font-medium mb-1">Account name</label>
             <input

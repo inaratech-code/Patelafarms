@@ -128,7 +128,7 @@ export default function ConsumptionPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-lg">
       <div className="flex items-center gap-3">
         <Link href="/inventory" className="text-sm text-primary font-medium inline-flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" />
@@ -142,8 +142,8 @@ export default function ConsumptionPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm grid grid-cols-2 gap-4">
-        <div className="col-span-2">
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl border border-slate-200 space-y-4 shadow-sm">
+        <div>
           <label className="block text-sm font-medium mb-1">Item (consumable)</label>
           <select
             required
@@ -164,7 +164,7 @@ export default function ConsumptionPage() {
             </p>
           ) : null}
         </div>
-        <div className="min-w-0">
+        <div>
           <label className="block text-sm font-medium mb-1">Quantity</label>
           <input
             className="w-full px-3 py-2 border rounded-md"
@@ -173,7 +173,7 @@ export default function ConsumptionPage() {
             inputMode="decimal"
           />
         </div>
-        <div className="min-w-0">
+        <div>
           <label className="block text-sm font-medium mb-1">Category</label>
           <select className="w-full px-3 py-2 border rounded-md bg-white" value={category} onChange={(e) => setCategory(e.target.value as ConsumptionCategory)}>
             {categories.map((c) => (
@@ -183,19 +183,15 @@ export default function ConsumptionPage() {
             ))}
           </select>
         </div>
-        <div className="col-span-2 min-w-0">
+        <div>
           <label className="block text-sm font-medium mb-1">Date</label>
           <input type="date" className="w-full px-3 py-2 border rounded-md" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
-        <div className="col-span-2">
+        <div>
           <label className="block text-sm font-medium mb-1">Notes (optional)</label>
           <textarea className="w-full px-3 py-2 border rounded-md text-sm" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="col-span-2 w-full py-2 bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50">
           {saving ? "Saving…" : "Record usage"}
         </button>
       </form>

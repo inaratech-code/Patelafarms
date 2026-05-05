@@ -289,7 +289,7 @@ export default function UsersPage() {
             </div>
 
             <form onSubmit={createRole} className="p-6 space-y-5">
-              <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Role Name *</label>
                   <input
@@ -440,7 +440,7 @@ export default function UsersPage() {
             </div>
 
             <form onSubmit={createUser} className="p-6 space-y-5">
-              <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Username *</label>
                   <input
@@ -495,7 +495,7 @@ export default function UsersPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Password *</label>
                   <div className="relative">
