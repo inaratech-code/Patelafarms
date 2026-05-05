@@ -283,7 +283,13 @@ export async function pullEvents() {
 
 export async function applyEvents(events: SyncEvent[]) {
   // Idempotency: skip events already applied.
-  const existing = new Set<string>((await db.outbox.toArray()).map((e) => e.id));
+  // Avoid loading the entire outbox (can be large on mobile). Use bulkGet by ids.
+  const ids = events.map((e) => e.id);
+  const existingRows = await db.outbox.bulkGet(ids);
+  const existing = new Set<string>();
+  for (let i = 0; i < ids.length; i++) {
+    if (existingRows[i]) existing.add(ids[i]);
+  }
   const nowIso = new Date().toISOString();
 
   await db.transaction("rw", db.tables, async () => {
