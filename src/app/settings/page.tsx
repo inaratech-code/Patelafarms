@@ -33,6 +33,7 @@ export default function SettingsPage() {
   const syncState = useMemo(() => getSyncState(), []);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncPaused, setSyncPaused] = useState(false);
   const [farmLink, setFarmLink] = useState<{ id: string; joinCode: string } | null>(null);
   const [farmLinkError, setFarmLinkError] = useState<string>("");
 
@@ -62,6 +63,15 @@ export default function SettingsPage() {
         setFarmLinkError(e instanceof Error ? e.message : "Could not load farm link info.");
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    setSyncPaused(localStorage.getItem("pf.syncPaused") === "1");
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "pf.syncPaused") setSyncPaused(localStorage.getItem("pf.syncPaused") === "1");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const [passwordForm, setPasswordForm] = useState({
@@ -105,6 +115,10 @@ export default function SettingsPage() {
 
   const runSync = async (mode: "all" | "push" | "pull") => {
     if (isSyncing) return;
+    if (syncPaused) {
+      setSyncStatus("Sync is paused after Reset Data. Resume sync in Settings to pull cloud data again.");
+      return;
+    }
     try {
       setIsSyncing(true);
       setSyncStatus("");
@@ -135,6 +149,8 @@ export default function SettingsPage() {
 
     try {
       localStorage.setItem("pf.resetting", "1");
+      // Prevent data from being immediately re-pulled from the cloud.
+      localStorage.setItem("pf.syncPaused", "1");
       // Clear app localStorage keys
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -185,6 +201,28 @@ export default function SettingsPage() {
           <p className="mt-1 text-sm text-slate-500">Sync offline data to Supabase when online.</p>
         </div>
         <div className="p-6 space-y-4">
+          {syncPaused ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Sync is paused</div>
+              <div className="mt-1 text-xs">
+                You recently used Reset Data, so the app will not re-download cloud data automatically. Resume sync when
+                you are ready.
+              </div>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold hover:bg-slate-800"
+                  onClick={() => {
+                    localStorage.removeItem("pf.syncPaused");
+                    setSyncPaused(false);
+                    setSyncStatus("Sync resumed.");
+                  }}
+                >
+                  Resume sync
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div className="rounded-lg border border-slate-200 p-4">
               <div className="text-xs text-slate-500">Device ID</div>

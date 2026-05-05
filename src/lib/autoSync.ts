@@ -34,6 +34,7 @@ async function tick() {
   if (_isTicking) return;
   if (!navigator.onLine) return;
   if (localStorage.getItem("pf.resetting") === "1") return;
+  if (localStorage.getItem("pf.syncPaused") === "1") return;
   const farmId = getFarmId();
   if (!farmId) return;
   try {
@@ -54,6 +55,7 @@ export async function startAutoSync() {
   if (!canUseSupabase()) return;
 
   try {
+    if (localStorage.getItem("pf.syncPaused") === "1") return;
     await ensureSupabaseAuth();
     // Important: do NOT create a new farm automatically.
     // Auto-sync should only run after this browser is linked to an existing farm id.
