@@ -149,26 +149,23 @@ export default function SettingsPage() {
       for (const k of keysToRemove) localStorage.removeItem(k);
 
       // Wipe IndexedDB data but keep users + roles.
-      await db.transaction("rw", db.tables, async () => {
-        await Promise.all([
-          db.inventory.clear(),
-          db.inventoryLosses.clear(),
-          db.stockMovement.clear(),
-          db.sales.clear(),
-          db.purchases.clear(),
-          db.dayBook.clear(),
-          db.ledgerAccounts.clear(),
-          db.ledgerEntries.clear(),
-          db.payments.clear(),
-          db.financialAccounts.clear(),
-          db.outbox.clear(),
-          db.consumptionLogs.clear(),
-        ]);
-      });
+      // Avoid wide transactions on mobile Safari / low-memory devices.
+      await db.inventory.clear();
+      await db.inventoryLosses.clear();
+      await db.stockMovement.clear();
+      await db.sales.clear();
+      await db.purchases.clear();
+      await db.dayBook.clear();
+      await db.ledgerAccounts.clear();
+      await db.ledgerEntries.clear();
+      await db.payments.clear();
+      await db.financialAccounts.clear();
+      await db.outbox.clear();
+      await db.consumptionLogs.clear();
 
       localStorage.removeItem("pf.resetting");
       // Reload to re-init DB + UI
-      location.href = "/";
+      window.location.replace("/");
     } catch (e) {
       console.error(e);
       alert(`Failed to reset data: ${e instanceof Error ? e.message : String(e)}`);
