@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { clearSession, getSession } from "@/lib/auth";
 import { startAutoSync } from "@/lib/autoSync";
 import { canAccessPath, normalizePermissions, pickDefaultRoute } from "@/lib/rbac";
 
@@ -25,6 +25,65 @@ export function AppShell(props: { children: React.ReactNode }) {
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
   const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
+
+  // Auto logout after 1 hour of inactivity.
+  useEffect(() => {
+    if (isLoginRoute) return;
+    if (!session?.userId) return;
+
+    const IDLE_KEY = "pf.lastActiveAt.v1";
+    const IDLE_MS = 60 * 60 * 1000; // 1 hour
+
+    const now = () => Date.now();
+
+    let lastWrite = 0;
+    const markActive = () => {
+      const t = now();
+      // Throttle localStorage writes (high-frequency events like mousemove).
+      if (t - lastWrite < 15_000) return;
+      lastWrite = t;
+      localStorage.setItem(IDLE_KEY, String(t));
+    };
+
+    // Initialize if missing.
+    if (!localStorage.getItem(IDLE_KEY)) {
+      localStorage.setItem(IDLE_KEY, String(now()));
+    }
+
+    const logout = () => {
+      clearSession();
+      localStorage.removeItem(IDLE_KEY);
+      window.location.replace("/login");
+    };
+
+    const check = () => {
+      const raw = localStorage.getItem(IDLE_KEY);
+      const last = raw ? Number(raw) : 0;
+      if (!last) return;
+      if (now() - last > IDLE_MS) logout();
+    };
+
+    const events: Array<keyof WindowEventMap> = ["click", "keydown", "mousemove", "touchstart", "scroll"];
+    for (const ev of events) window.addEventListener(ev, markActive, { passive: true });
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        // Refresh activity + check timeout when returning to the tab.
+        markActive();
+        check();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    const interval = window.setInterval(check, 30_000);
+    // Check once on mount.
+    check();
+
+    return () => {
+      for (const ev of events) window.removeEventListener(ev, markActive as any);
+      document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(interval);
+    };
+  }, [isLoginRoute, session?.userId]);
 
   useEffect(() => {
     const authed = Boolean(session?.userId);
