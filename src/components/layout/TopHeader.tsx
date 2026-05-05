@@ -35,6 +35,7 @@ export function TopHeader() {
   const [sessionTick, setSessionTick] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
+  const [syncToast, setSyncToast] = useState<string>("");
 
   const session = useMemo(() => getSession(), [pathname, sessionTick]);
 
@@ -65,11 +66,17 @@ export function TopHeader() {
     if (!isOnline) return;
     try {
       setIsSyncing(true);
+      setSyncToast("Syncing…");
       await syncNow();
+      setSyncToast("Synced.");
     } catch (e) {
       console.error(e);
+      const msg = e instanceof Error ? e.message : "Sync failed.";
+      setSyncToast(`Sync failed: ${msg}`);
+      alert(`Sync failed: ${msg}`);
     } finally {
       setIsSyncing(false);
+      window.setTimeout(() => setSyncToast(""), 2500);
     }
   };
 
@@ -102,11 +109,11 @@ export function TopHeader() {
           type="button"
           onClick={() => void runSync()}
           disabled={!isOnline || isSyncing}
-          title={!isOnline ? "Offline" : isSyncing ? "Syncing…" : "Sync now"}
+          title={!isOnline ? "Offline" : isSyncing ? "Syncing…" : syncToast || "Sync now"}
           className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
           <RefreshCw className={cn("w-4 h-4 text-slate-500", isSyncing ? "animate-spin" : "")} />
-          <span className="hidden sm:inline">Sync</span>
+          <span className="hidden sm:inline">{isSyncing ? "Syncing…" : "Sync"}</span>
           {isLandscapeMobile ? <RotateCw className="w-4 h-4 text-slate-400" /> : null}
         </button>
 
