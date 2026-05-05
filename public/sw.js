@@ -31,6 +31,13 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  const data = event.data || {};
+  if (data && data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 function shouldHandleAsAsset(url) {
   // Keep this intentionally simple: cache static assets; don't cache API/data.
   if (url.pathname.startsWith("/_next/")) return true;
