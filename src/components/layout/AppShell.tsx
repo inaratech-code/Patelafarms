@@ -91,6 +91,7 @@ export function AppShell(props: { children: React.ReactNode }) {
       // In dev (Turbopack), next/navigation can dispatch before router init.
       // Use a hard navigation for auth gating to avoid that class of error.
       window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+      return; // keep UI blank; avoid flashing dashboard before redirect
     }
     setChecked(true);
   }, [isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
