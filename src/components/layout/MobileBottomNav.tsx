@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle, BarChart3, Soup } from "lucide-react";
+import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle, BarChart3 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
