@@ -2,15 +2,11 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { db } from "@/lib/db";
 import {
-  feedExpenseMonth,
-  grossSalesMonth,
   inventoryStockValue,
-  lossExpenseMonth,
-  netProfitErp,
-  purchasesMonth,
+  localDayKey,
 } from "@/lib/erp/metrics";
 
 function monthKeyNow() {
@@ -18,8 +14,8 @@ function monthKeyNow() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function todayKeyLocal() {
-  return new Date().toISOString().split("T")[0];
+function dayKey(d: Date) {
+  return localDayKey(d);
 }
 
 export default function ReportsPage() {
@@ -31,43 +27,55 @@ export default function ReportsPage() {
   const losses = useLiveQuery(() => db.inventoryLosses.toArray()) ?? [];
 
   const monthKey = monthKeyNow();
-  const todayKey = todayKeyLocal();
+  const todayKey = dayKey(new Date());
 
-  const daily = useMemo(() => {
-    const salesToday = sales
-      .filter((s) => new Date(s.date).toISOString().split("T")[0] === todayKey)
-      .reduce((a, s) => a + Number(s.totalPrice ?? 0), 0);
-    const purchasesToday = purchases
-      .filter((p) => new Date(p.date).toISOString().split("T")[0] === todayKey)
+  const [period, setPeriod] = useState<"day" | "week" | "month">("day");
+
+  const periodRange = useMemo(() => {
+    if (period === "day") {
+      const d = new Date();
+      return { startKey: dayKey(d), endKey: dayKey(d) };
+    }
+    if (period === "week") {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 6);
+      return { startKey: dayKey(start), endKey: dayKey(end) };
+    }
+    // month: represented via monthKey, but also provide keys for consistent filtering when needed
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { startKey: dayKey(start), endKey: dayKey(end) };
+  }, [period]);
+
+  const periodLabel = useMemo(() => {
+    if (period === "day") return `Daily (${periodRange.startKey})`;
+    if (period === "week") return `Weekly (${periodRange.startKey} → ${periodRange.endKey})`;
+    return `Monthly (${monthKey})`;
+  }, [period, periodRange, monthKey]);
+
+  const isWithinRange = (iso: string) => {
+    const k = dayKey(new Date(iso));
+    return k >= periodRange.startKey && k <= periodRange.endKey;
+  };
+
+  const summary = useMemo(() => {
+    const salesTotal = sales.filter((s) => isWithinRange(s.date)).reduce((a, s) => a + Number(s.totalPrice ?? 0), 0);
+    const purchasesTotal = purchases
+      .filter((p) => isWithinRange(p.date))
       .reduce((a, p) => a + Number(p.totalCost ?? 0), 0);
-    const expensesToday = dayBook
-      .filter((e) => e.type === "Expense" && e.time.slice(0, 10) === todayKey)
+    const dayBookExpenses = dayBook
+      .filter((e) => e.type === "Expense" && isWithinRange(e.time))
       .reduce((a, e) => a + Number(e.amount ?? 0), 0);
-    const feedToday = consumption
-      .filter((c) => new Date(c.date).toISOString().split("T")[0] === todayKey)
-      .reduce((a, c) => a + Number(c.cost ?? 0), 0);
-    return { salesToday, purchasesToday, expensesToday, feedToday };
-  }, [sales, purchases, dayBook, consumption, todayKey]);
+    const feedCost = consumption.filter((c) => isWithinRange(c.date)).reduce((a, c) => a + Number(c.cost ?? 0), 0);
+    const lossCost = losses.filter((l) => isWithinRange(l.date)).reduce((a, l) => a + Number(l.estimatedCost ?? 0), 0);
 
-  const pnlMonth = useMemo(
-    () =>
-      netProfitErp({
-        inventory,
-        sales,
-        purchases,
-        dayBook,
-        consumption,
-        losses,
-        monthKey,
-        todayKey,
-      }),
-    [inventory, sales, purchases, dayBook, consumption, losses, monthKey, todayKey]
-  );
+    // Simple P&L for the selected period (range-based).
+    const net = salesTotal - purchasesTotal - feedCost - lossCost - dayBookExpenses;
 
-  const gross = useMemo(() => grossSalesMonth(sales, monthKey), [sales, monthKey]);
-  const buys = useMemo(() => purchasesMonth(purchases, monthKey), [purchases, monthKey]);
-  const feedM = useMemo(() => feedExpenseMonth(consumption, monthKey), [consumption, monthKey]);
-  const lossM = useMemo(() => lossExpenseMonth(losses, monthKey), [losses, monthKey]);
+    return { salesTotal, purchasesTotal, dayBookExpenses, feedCost, lossCost, net };
+  }, [sales, purchases, dayBook, consumption, losses, periodRange, period]);
 
   const stockValue = useMemo(() => inventoryStockValue(inventory), [inventory]);
 
@@ -76,7 +84,11 @@ export default function ReportsPage() {
   const topSelling = useMemo(() => {
     const m = new Map<number, { qty: number; revenue: number }>();
     for (const s of sales) {
-      if (!monthPrefix(s.date, monthKey)) continue;
+      if (period === "month") {
+        if (!monthPrefix(s.date, monthKey)) continue;
+      } else {
+        if (!isWithinRange(s.date)) continue;
+      }
       const cur = m.get(s.itemId) ?? { qty: 0, revenue: 0 };
       cur.qty += Number(s.quantity ?? 0);
       cur.revenue += Number(s.totalPrice ?? 0);
@@ -86,7 +98,7 @@ export default function ReportsPage() {
       .map(([itemId, v]) => ({ itemId, name: itemsById.get(itemId)?.name ?? `#${itemId}`, ...v }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 8);
-  }, [sales, monthKey, itemsById]);
+  }, [sales, monthKey, itemsById, period, periodRange]);
 
   const feedRecent = useMemo(() => {
     return consumption
@@ -116,7 +128,7 @@ export default function ReportsPage() {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Reports</h1>
-          <p className="mt-1 text-sm text-slate-500">Daily summary, monthly P&amp;L, feed, mortality, and top sellers.</p>
+          <p className="mt-1 text-sm text-slate-500">Daily, weekly, and monthly summaries with trends and lists.</p>
         </div>
         <Link href="/outstanding" className="text-sm font-medium text-primary hover:underline">
           Outstanding parties →
@@ -124,26 +136,52 @@ export default function ReportsPage() {
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Daily summary ({todayKey})</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">{periodLabel} summary</h2>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setPeriod("day")}
+              className={`px-3 py-1.5 rounded-md font-semibold ${period === "day" ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Day
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriod("week")}
+              className={`px-3 py-1.5 rounded-md font-semibold ${period === "week" ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriod("month")}
+              className={`px-3 py-1.5 rounded-md font-semibold ${period === "month" ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Month
+            </button>
+          </div>
+        </div>
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-          <ReportStat label="Sales" value={daily.salesToday} />
-          <ReportStat label="Purchases" value={daily.purchasesToday} />
-          <ReportStat label="Day-book expenses" value={daily.expensesToday} />
-          <ReportStat label="Feed usage (cost)" value={daily.feedToday} />
+          <ReportStat label="Sales" value={summary.salesTotal} />
+          <ReportStat label="Purchases" value={summary.purchasesTotal} />
+          <ReportStat label="Day-book expenses" value={summary.dayBookExpenses} />
+          <ReportStat label="Feed usage (cost)" value={summary.feedCost} />
         </div>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Monthly profit &amp; loss ({monthKey})</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Profit &amp; loss ({periodLabel})</h2>
         <div className="mt-4 space-y-2 text-sm">
-          <Row label="Gross sales" value={gross} />
-          <Row label="Purchases" value={buys} outflow />
-          <Row label="Feed expense (consumption)" value={feedM} outflow />
-          <Row label="Loss / mortality cost" value={lossM} outflow />
-          <Row label="Net profit (ERP formula)" value={pnlMonth} emphasize />
+          <Row label="Gross sales" value={summary.salesTotal} />
+          <Row label="Purchases" value={summary.purchasesTotal} outflow />
+          <Row label="Feed expense (consumption)" value={summary.feedCost} outflow />
+          <Row label="Loss / mortality cost" value={summary.lossCost} outflow />
+          <Row label="Day-book expenses" value={summary.dayBookExpenses} outflow />
+          <Row label="Net profit" value={summary.net} emphasize />
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          Net profit = sales − purchases − feed − loss costs − other operating expenses logged in the day book (non-purchase).
+          Net profit = sales − purchases − feed − loss − day-book expenses (range based).
         </p>
       </section>
 
@@ -198,7 +236,7 @@ export default function ReportsPage() {
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Top selling items ({monthKey})</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Top selling items ({periodLabel})</h2>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
@@ -212,7 +250,7 @@ export default function ReportsPage() {
               {topSelling.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="py-4 text-slate-500">
-                    No sales this month.
+                    No sales in this period.
                   </td>
                 </tr>
               ) : (
