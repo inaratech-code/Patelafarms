@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
-import { getOrCreateCashLedgerAccountId } from "@/lib/ledger";
+import { CASH_LEDGER_NAME, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 
 function asDrCr(amount: number) {
   if (amount === 0) return { label: "0", side: "" as const };
@@ -39,6 +39,29 @@ export default function LedgerPage() {
     }
     return m;
   }, [entries]);
+
+  const deleteAccount = async (accountId: number) => {
+    const acct = await db.ledgerAccounts.get(accountId);
+    if (!acct?.id) return;
+    if (acct.name === CASH_LEDGER_NAME) return alert("This is the system cash ledger and cannot be deleted.");
+    const hasEntries = entries.some((e) => e.accountId === accountId);
+    if (hasEntries) return alert("Cannot delete: this account has ledger entries.");
+    if (!confirm(`Delete ledger account "${acct.name}"?`)) return;
+
+    await db.transaction("rw", db.tables, async () => {
+      if (acct.uid) {
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "ledger.account",
+            entityId: acct.uid,
+            op: "delete",
+            payload: { uid: acct.uid },
+          })
+        );
+      }
+      await db.ledgerAccounts.delete(accountId);
+    });
+  };
 
   useEffect(() => {
     void db.transaction("rw", db.tables, async () => {
@@ -158,6 +181,29 @@ export default function LedgerPage() {
                       })()}
                     </div>
                   </div>
+
+                  {typeof account.id === "number" ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void deleteAccount(account.id!);
+                      }}
+                      disabled={account.name === CASH_LEDGER_NAME || entries.some((x) => x.accountId === account.id)}
+                      title={
+                        account.name === CASH_LEDGER_NAME
+                          ? "System cash ledger"
+                          : entries.some((x) => x.accountId === account.id)
+                            ? "Cannot delete: has entries"
+                            : "Delete account"
+                      }
+                      className="shrink-0 p-2 rounded-md text-slate-500 hover:bg-slate-50 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500"
+                      aria-label="Delete account"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <div className="mt-6 flex items-center justify-between text-primary font-medium text-sm opacity-0 group-hover:opacity-100 transition-opacity">

@@ -423,6 +423,10 @@ export async function applyEvents(events: SyncEvent[]) {
           if (!found) await db.ledgerAccounts.add(account as unknown as Omit<LedgerAccount, "id">);
         }
       }
+      if (e.entityType === "ledger.account" && e.op === "delete") {
+        const uid = asString(payload?.uid) ?? e.entityId;
+        if (uid) await db.ledgerAccounts.where("uid").equals(uid).delete();
+      }
       if (e.entityType === "stock.movement" && e.op === "create") {
         const movement = asRecord(payload?.movement);
         const uid = movement ? asString(movement.uid) : undefined;
