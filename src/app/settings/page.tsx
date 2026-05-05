@@ -1,21 +1,126 @@
 "use client";
 
-import { Save, Trash2, RefreshCw, CloudUpload, CloudDownload } from "lucide-react";
-import { db } from "@/lib/db";
-import { clearSession } from "@/lib/auth";
+import {
+  Save,
+  Trash2,
+  RefreshCw,
+  CloudUpload,
+  CloudDownload,
+  Eye,
+  EyeOff,
+  Lock,
+} from "lucide-react";
+import { db, type User } from "@/lib/db";
+import { changePassword, clearSession, getSession } from "@/lib/auth";
 import { getOrCreateDeviceId } from "@/lib/device";
 import { getSyncState } from "@/lib/syncState";
 import { syncNow, pushOutbox, pullEvents } from "@/lib/sync";
-import { useMemo, useState } from "react";
+import { getFarmId, ensureFarm, ensureFarmJoinCode } from "@/lib/farm";
+import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
+import { useEffect, useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { requirePasswordConfirm } from "@/lib/passwordConfirm";
+import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 
 export default function SettingsPage() {
+  const session = useMemo(() => getSession(), []);
+  const userId = session?.userId ?? 0;
+  const user = useLiveQuery(async (): Promise<User | undefined> => {
+    if (!userId) return undefined;
+    return (await db.users.get(userId)) ?? undefined;
+  }, [userId]);
+
   const deviceId = useMemo(() => getOrCreateDeviceId(), []);
   const syncState = useMemo(() => getSyncState(), []);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncPaused, setSyncPaused] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [farmLink, setFarmLink] = useState<{ id: string; joinCode: string } | null>(null);
+  const [farmLinkError, setFarmLinkError] = useState<string>("");
+
+  useEffect(() => {
+    const fid = getFarmId();
+    if (!fid) {
+      setFarmLink(null);
+      return;
+    }
+    void (async () => {
+      try {
+        setFarmLinkError("");
+        await ensureSupabaseAuth();
+        await ensureFarm();
+        await ensureFarmJoinCode();
+        const supabase = getSupabaseClient();
+        const { data, error } = await supabase.from("farms").select("id, join_code").eq("id", fid).maybeSingle();
+        if (error) {
+          setFarmLinkError(error.message);
+          return;
+        }
+        const row = data as { id?: string; join_code?: string | null } | null;
+        if (row?.id) {
+          setFarmLink({ id: String(row.id), joinCode: row.join_code ? String(row.join_code) : "" });
+        }
+      } catch (e: unknown) {
+        setFarmLinkError(e instanceof Error ? e.message : "Could not load farm link info.");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    setSyncPaused(localStorage.getItem("pf.syncPaused") === "1");
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "pf.syncPaused") setSyncPaused(localStorage.getItem("pf.syncPaused") === "1");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const [passwordForm, setPasswordForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [showPassword, setShowPassword] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
+  const [passwordStatus, setPasswordStatus] = useState<string>("");
+  const [passwordError, setPasswordError] = useState<string>("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  const submitPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId || passwordSaving) return;
+    setPasswordError("");
+    setPasswordStatus("");
+    if (passwordForm.next !== passwordForm.confirm) {
+      setPasswordError("New password and confirmation do not match.");
+      return;
+    }
+    try {
+      setPasswordSaving(true);
+      await changePassword({
+        userId,
+        currentPassword: passwordForm.current,
+        newPassword: passwordForm.next,
+      });
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      setPasswordStatus("Password updated.");
+    } catch (err: unknown) {
+      setPasswordError(err instanceof Error ? err.message : "Could not update password.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
 
   const runSync = async (mode: "all" | "push" | "pull") => {
     if (isSyncing) return;
+    if (syncPaused) {
+      setSyncStatus("Sync is paused after Reset Data. Resume sync in Settings to pull cloud data again.");
+      return;
+    }
     try {
       setIsSyncing(true);
       setSyncStatus("");
@@ -38,28 +143,37 @@ export default function SettingsPage() {
   };
 
   const resetAllData = async () => {
-    if (!confirm("This will delete ALL saved data (inventory, ledger, day book, users, roles, etc.) and reset app settings. Continue?")) return;
+    if (isResetting) return;
+    const ok = await requirePasswordConfirm({
+      title: "Reset all data",
+      message:
+        "This will delete ALL business data on ALL devices (inventory, ledger, day book, etc.) and reset app settings. Users will NOT be deleted.",
+    });
+    if (!ok) return;
 
     try {
-      // Clear app localStorage keys
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k) continue;
-        if (k.startsWith("pf.")) keysToRemove.push(k);
+      setIsResetting(true);
+      if (!navigator.onLine) {
+        throw new Error("You must be online to reset cloud data for all devices.");
       }
-      for (const k of keysToRemove) localStorage.removeItem(k);
 
-      clearSession();
+      await ensureSupabaseAuth();
+      const supabase = getSupabaseClient();
+      const farmId = getFarmId();
+      if (!farmId) throw new Error("This device is not linked to a farm yet.");
 
-      // Wipe IndexedDB
-      await db.delete();
+      const { error } = await supabase.rpc("reset_farm_data", { p_farm_id: farmId });
+      if (error) throw error;
+
+      // Clear local business data (users/roles preserved).
+      await resetBusinessDataLocal({ keepUsersAndRoles: true });
 
       // Reload to re-init DB + UI
-      location.href = "/login";
+      window.location.replace("/");
     } catch (e) {
       console.error(e);
-      alert("Failed to reset data. Please try again.");
+      alert(`Failed to reset data: ${e instanceof Error ? e.message : String(e)}`);
+      setIsResetting(false);
     }
   };
 
@@ -72,9 +186,31 @@ export default function SettingsPage() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden max-w-2xl">
         <div className="p-6 border-b border-slate-100">
           <h2 className="text-lg font-medium text-slate-900">Sync</h2>
-          <p className="mt-1 text-sm text-slate-500">Sync offline data to Supabase when online.</p>
+          <p className="mt-1 text-sm text-slate-500">Keeps your data the same on all your devices when you’re online.</p>
         </div>
         <div className="p-6 space-y-4">
+          {syncPaused ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Sync is paused</div>
+              <div className="mt-1 text-xs">
+                You recently used Reset Data, so the app will not re-download cloud data automatically. Resume sync when
+                you are ready.
+              </div>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold hover:bg-slate-800"
+                  onClick={() => {
+                    localStorage.removeItem("pf.syncPaused");
+                    setSyncPaused(false);
+                    setSyncStatus("Sync resumed.");
+                  }}
+                >
+                  Resume sync
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div className="rounded-lg border border-slate-200 p-4">
               <div className="text-xs text-slate-500">Device ID</div>
@@ -87,6 +223,61 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-700">
+            <p className="text-xs leading-relaxed">
+              <span className="font-semibold text-slate-900">Other phones/computers:</span> just use the same username
+              and password on the Login page. Keep internet on for the first login on a new device.
+            </p>
+          </div>
+
+          <details className="rounded-lg border border-slate-200 text-sm open:pb-3">
+            <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-slate-800">
+              Optional: Link a new device with a code
+            </summary>
+            <div className="px-4 pb-3 space-y-3 text-xs text-slate-600 border-t border-slate-200/80 pt-3">
+              {farmLink ? (
+                <>
+                  <div>
+                    <div className="text-slate-500">Farm code</div>
+                    <div className="mt-1 flex gap-2 items-start">
+                      <div className="font-mono text-xs text-slate-900 break-all flex-1">{farmLink.id}</div>
+                      <button
+                        type="button"
+                        className="shrink-0 px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
+                        onClick={() => void navigator.clipboard?.writeText(farmLink.id)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-500">Link code</div>
+                    <div className="mt-1 flex gap-2 items-center">
+                      <div className="font-mono text-base font-bold tracking-widest text-slate-900">
+                        {farmLink.joinCode || "—"}
+                      </div>
+                      {farmLink.joinCode ? (
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
+                          onClick={() => void navigator.clipboard?.writeText(farmLink.joinCode)}
+                        >
+                          Copy
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              ) : farmLinkError ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">{farmLinkError}</div>
+              ) : getFarmId() ? (
+                <div className="text-slate-500">Loading…</div>
+              ) : (
+                <div className="text-slate-500">Turn on Sync once, then open this section.</div>
+              )}
+            </div>
+          </details>
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -125,6 +316,130 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {userId && user ? (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden max-w-2xl">
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-lg font-medium text-slate-900">Password</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Signed in as <span className="font-semibold text-slate-800">{user.username}</span>. Use a strong password
+              you do not reuse elsewhere.
+            </p>
+          </div>
+          <form onSubmit={submitPasswordChange} className="p-6 space-y-4">
+            {!user.passwordHash ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                This account has no password on file. Ask an administrator to set one from User Management, or recreate
+                your user with a password.
+              </div>
+            ) : null}
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Current password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type={showPassword.current ? "text" : "password"}
+                  value={passwordForm.current}
+                  onChange={(e) => setPasswordForm((v) => ({ ...v, current: e.target.value }))}
+                  className="w-full pl-9 pr-11 py-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  autoComplete="current-password"
+                  disabled={!user.passwordHash}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => ({ ...s, current: !s.current }))}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                  aria-label={showPassword.current ? "Hide current password" : "Show current password"}
+                  disabled={!user.passwordHash}
+                >
+                  {showPassword.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">New password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type={showPassword.next ? "text" : "password"}
+                  value={passwordForm.next}
+                  onChange={(e) => setPasswordForm((v) => ({ ...v, next: e.target.value }))}
+                  className="w-full pl-9 pr-11 py-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  autoComplete="new-password"
+                  minLength={4}
+                  maxLength={20}
+                  disabled={!user.passwordHash}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => ({ ...s, next: !s.next }))}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                  aria-label={showPassword.next ? "Hide new password" : "Show new password"}
+                  disabled={!user.passwordHash}
+                >
+                  {showPassword.next ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="mt-1 text-xs text-slate-500">4–20 characters (same rules as new users).</div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Confirm new password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type={showPassword.confirm ? "text" : "password"}
+                  value={passwordForm.confirm}
+                  onChange={(e) => setPasswordForm((v) => ({ ...v, confirm: e.target.value }))}
+                  className="w-full pl-9 pr-11 py-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  autoComplete="new-password"
+                  minLength={4}
+                  maxLength={20}
+                  disabled={!user.passwordHash}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => ({ ...s, confirm: !s.confirm }))}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                  aria-label={showPassword.confirm ? "Hide confirmation" : "Show confirmation"}
+                  disabled={!user.passwordHash}
+                >
+                  {showPassword.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {passwordError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                {passwordError}
+              </div>
+            ) : null}
+            {passwordStatus ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                {passwordStatus}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={
+                  passwordSaving ||
+                  !user.passwordHash ||
+                  passwordForm.current.length === 0 ||
+                  passwordForm.next.length < 4 ||
+                  passwordForm.next.length > 20
+                }
+                className="px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 disabled:opacity-60"
+              >
+                {passwordSaving ? "Saving…" : "Update password"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden max-w-2xl">
         <div className="p-6 border-b border-slate-100">
@@ -165,13 +480,14 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={resetAllData}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-alert-red text-white font-semibold hover:bg-alert-red/90"
+            disabled={isResetting}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-alert-red text-white font-semibold hover:bg-alert-red/90 disabled:opacity-60"
           >
             <Trash2 className="w-5 h-5" />
-            Reset All Data
+            {isResetting ? "Resetting…" : "Reset All Data"}
           </button>
           <div className="mt-2 text-xs text-slate-500">
-            This deletes all locally stored data (IndexedDB) and clears app preferences (localStorage).
+            This deletes cloud + local business data for this farm so all devices become empty (users/roles stay).
           </div>
         </div>
       </div>

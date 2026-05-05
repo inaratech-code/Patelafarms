@@ -148,70 +148,70 @@ export function HeroSection(props: { isOnline: boolean }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="relative overflow-hidden rounded-[28px] border border-[#e2e8f0] bg-white shadow-sm"
+      className="relative overflow-hidden rounded-2xl border border-[#e2e8f0] bg-white shadow-sm"
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0871b3]/12 via-white to-[#80a932]/12" />
-      <div className="absolute inset-0 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0871b3]/10 via-white to-[#80a932]/10" />
+      <div className="absolute inset-0 backdrop-blur-[1px]" />
 
-      <div className="relative p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-        <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-[#0871b3] border border-[#e2e8f0]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0871b3]" />
+      <div className="relative p-4 sm:p-5 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 lg:gap-5">
+        <div className="space-y-1.5 min-w-0 flex-1">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-[#0871b3] border border-[#e2e8f0]">
+            <span className="w-1 h-1 rounded-full bg-[#0871b3]" />
             {greeting}
           </div>
 
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[#0f172a]">
+            <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-[#0f172a] leading-snug">
               Namaste 👋 Welcome back, <span className="text-[#0871b3]">Patela Farm</span>
             </h1>
-            <p className="mt-2 text-sm sm:text-base text-[#64748b]">
-              Here&apos;s today&apos;s business overview and stock activity.
+            <p className="mt-0.5 text-xs sm:text-sm text-[#64748b] leading-snug">
+              Today&apos;s overview and stock activity.
             </p>
           </div>
 
-          <div className="text-sm text-[#64748b]">
+          <div className="text-xs text-[#64748b]">
             <span className="font-medium text-[#0f172a]">Location:</span> Dhangadhi, Nepal
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:max-w-xl">
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white/70 p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#64748b]">
-              <CalendarDays className="w-4 h-4" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:max-w-md lg:shrink-0">
+          <div className="rounded-xl border border-[#e2e8f0] bg-white/80 p-2.5 sm:p-3">
+            <div className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-[#64748b]">
+              <CalendarDays className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               Today
             </div>
-            <div className="mt-2 text-sm font-semibold text-[#0f172a]" suppressHydrationWarning>
+            <div className="mt-1 text-[11px] sm:text-xs font-semibold text-[#0f172a] leading-tight" suppressHydrationWarning>
               {now ? formatLongDate(now) : "--"}
             </div>
-            <div className="mt-0.5 text-xs font-semibold text-[#64748b]" suppressHydrationWarning>
+            <div className="mt-0.5 text-[10px] font-medium text-[#64748b] leading-tight" suppressHydrationWarning>
               {now ? `${formatNepaliDateBS(now)} (BS)` : "--"}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white/70 p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#64748b]">
-              <CloudSun className="w-4 h-4" />
+          <div className="rounded-xl border border-[#e2e8f0] bg-white/80 p-2.5 sm:p-3">
+            <div className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-[#64748b]">
+              <CloudSun className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               Weather
             </div>
-            <div className="mt-2 text-sm font-semibold text-[#0f172a]">
+            <div className="mt-1 text-[11px] sm:text-xs font-semibold text-[#0f172a] leading-tight break-words">
               {weatherText ?? weatherFallbackText}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white/70 p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#64748b]">
-              {props.isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+          <div className="rounded-xl border border-[#e2e8f0] bg-white/80 p-2.5 sm:p-3">
+            <div className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-[#64748b]">
+              {props.isOnline ? <Wifi className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> : <WifiOff className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />}
               Sync
             </div>
-            <div className="mt-2">
+            <div className="mt-1">
               <span
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold border ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-semibold border ${
                   props.isOnline
                     ? "bg-[#80a932]/10 text-[#80a932] border-[#80a932]/25"
                     : "bg-amber-500/10 text-amber-700 border-amber-500/25"
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${props.isOnline ? "bg-[#80a932]" : "bg-amber-500"}`} />
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${props.isOnline ? "bg-[#80a932]" : "bg-amber-500"}`} />
                 {props.isOnline ? "Online" : "Offline"}
               </span>
             </div>

@@ -1,12 +1,13 @@
 "use client";
 
-import { Bell, Search, User, Menu } from "lucide-react";
+import { Bell, User, Menu, RefreshCw, RotateCw, LogOut } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useSidebar } from "@/components/sidebar/Sidebar";
-import { getSession } from "@/lib/auth";
+import { clearSession, getSession } from "@/lib/auth";
 import { usePathname } from "next/navigation";
+import { syncNow } from "@/lib/sync";
 
 function subscribeOnlineStatus(onStoreChange: () => void) {
   window.addEventListener("online", onStoreChange);
@@ -32,6 +33,9 @@ export function TopHeader() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sessionTick, setSessionTick] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
+  const [syncToast, setSyncToast] = useState<string>("");
 
   const session = useMemo(() => getSession(), [pathname, sessionTick]);
 
@@ -48,36 +52,54 @@ export function TopHeader() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  useEffect(() => {
+    // Show rotate indicator only when on mobile + landscape orientation.
+    const mq = window.matchMedia("(max-width: 640px) and (orientation: landscape)");
+    const update = () => setIsLandscapeMobile(Boolean(mq.matches));
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+
+  const runSync = async () => {
+    if (isSyncing) return;
+    if (!isOnline) return;
+    try {
+      setIsSyncing(true);
+      setSyncToast("Syncing…");
+      await syncNow();
+      setSyncToast("Synced.");
+    } catch (e) {
+      console.error(e);
+      const msg = e instanceof Error ? e.message : "Sync failed.";
+      setSyncToast(`Sync failed: ${msg}`);
+      alert(`Sync failed: ${msg}`);
+    } finally {
+      setIsSyncing(false);
+      window.setTimeout(() => setSyncToast(""), 2500);
+    }
+  };
+
+  const logout = () => {
+    clearSession();
+    setMenuOpen(false);
+    window.location.replace("/login");
+  };
+
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 bg-white/90 backdrop-blur border-b border-[#e2e8f0] sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 flex items-center justify-between min-h-14 h-14 sm:h-16 px-3 sm:px-5 lg:px-8 pt-[env(safe-area-inset-top,0px)] bg-white/90 backdrop-blur border-b border-[#e2e8f0]">
       <button
         type="button"
-        className="md:hidden p-2 rounded-md hover:bg-slate-50 text-slate-600"
+        className="lg:hidden shrink-0 p-2.5 rounded-md hover:bg-slate-50 text-slate-600 [touch-action:manipulation]"
         onClick={sidebar.openMobile}
         aria-label="Open menu"
       >
         <Menu className="w-5 h-5" />
       </button>
 
-      <div className="flex flex-1">
-        <form className="flex w-full md:ml-0" action="#" method="GET">
-          <label htmlFor="search-field" className="sr-only">Search</label>
-          <div className="relative w-full text-slate-400 focus-within:text-slate-600">
-            <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-              <Search className="w-5 h-5" aria-hidden="true" />
-            </div>
-            <input
-              id="search-field"
-              className="block w-full h-full py-2 pl-8 pr-3 text-sm text-slate-900 placeholder-slate-500 border-transparent focus:outline-none focus:ring-0 focus:border-transparent sm:text-sm bg-transparent"
-              placeholder="Search inventory, ledgers..."
-              type="search"
-              name="search"
-            />
-          </div>
-        </form>
-      </div>
+      <div className="flex-1" />
 
-      <div className="flex items-center ml-4 space-x-4 md:ml-6">
+      <div className="flex items-center shrink-0 ml-2 sm:ml-4 space-x-2 sm:space-x-4 lg:ml-6">
         <div className={cn(
           "flex items-center px-2.5 py-1 text-xs font-medium rounded-full",
           isOnline ? "bg-alert-green/10 text-alert-green" : "bg-alert-yellow/10 text-alert-yellow"
@@ -88,6 +110,18 @@ export function TopHeader() {
           )} />
           {isOnline ? "Synced" : "Offline"}
         </div>
+
+        <button
+          type="button"
+          onClick={() => void runSync()}
+          disabled={!isOnline || isSyncing}
+          title={!isOnline ? "Offline" : isSyncing ? "Syncing…" : syncToast || "Sync now"}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw className={cn("w-4 h-4 text-slate-500", isSyncing ? "animate-spin" : "")} />
+          <span className="hidden sm:inline">{isSyncing ? "Syncing…" : "Sync"}</span>
+          {isLandscapeMobile ? <RotateCw className="w-4 h-4 text-slate-400" /> : null}
+        </button>
 
         <Link href="/alerts" className="p-1 text-slate-400 bg-white rounded-full hover:text-slate-500 focus:outline-none">
           <span className="sr-only">View notifications</span>
@@ -121,6 +155,17 @@ export function TopHeader() {
                 <div className="px-3 py-2 border-b border-slate-100">
                   <div className="text-xs text-slate-500">Signed in as</div>
                   <div className="text-sm font-semibold text-slate-900 truncate">{session?.username ?? "User"}</div>
+                </div>
+                <div className="p-2">
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="w-full inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                    aria-label="Logout"
+                    title="Logout"
+                  >
+                    <LogOut className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
             </>

@@ -9,6 +9,7 @@ import { commonUnits } from "@/lib/units";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { isConsumable, isSellable, resolveItemType } from "@/lib/erp/items";
+import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 
 export default function InventoryPage() {
   const items = useLiveQuery(() => db.inventory.toArray());
@@ -253,7 +254,7 @@ export default function InventoryPage() {
                   </div>
                 </header>
 
-                <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
+                <dl className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-3 text-sm">
                   <div className="col-span-2">
                     <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stock on hand</dt>
                     <dd className="mt-0.5 flex flex-wrap items-center gap-2">
@@ -324,7 +325,14 @@ export default function InventoryPage() {
                     <button
                       type="button"
                       title="Delete item"
-                      onClick={() => db.inventory.delete(item.id!)}
+                      onClick={async () => {
+                        const ok = await requirePasswordConfirm({
+                          title: "Delete item",
+                          message: `Delete item "${item.name}"?`,
+                        });
+                        if (!ok) return;
+                        await db.inventory.delete(item.id!);
+                      }}
                       className="ml-auto inline-flex items-center justify-center rounded-md border border-transparent p-2 text-alert-red hover:bg-red-50"
                     >
                       <Trash2 className="w-4 h-4" />

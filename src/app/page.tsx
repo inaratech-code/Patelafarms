@@ -11,6 +11,7 @@ import {
   consumptionTrend7d,
   expenseTrend7d,
   feedExpenseToday,
+  localDayKey,
   lossTrend7d,
   netProfitErp,
 } from "@/lib/erp/metrics";
@@ -44,7 +45,7 @@ export default function Dashboard() {
 
   const isOnline = useSyncExternalStore(subscribeOnlineStatus, getOnlineSnapshot, getOnlineServerSnapshot);
 
-  const todayKey = new Date().toISOString().split("T")[0];
+  const todayKey = localDayKey(new Date());
   const monthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
   const purchasesThisMonth = (purchases ?? [])
@@ -79,15 +80,15 @@ export default function Dashboard() {
   const yesterdayKey = (() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    return d.toISOString().split("T")[0];
+    return localDayKey(d);
   })();
 
   const todaySales = (sales ?? [])
-    .filter((s) => new Date(s.date).toISOString().split("T")[0] === todayKey)
+    .filter((s) => localDayKey(new Date(s.date)) === todayKey)
     .reduce((acc, s) => acc + s.totalPrice, 0);
 
   const yesterdaySales = (sales ?? [])
-    .filter((s) => new Date(s.date).toISOString().split("T")[0] === yesterdayKey)
+    .filter((s) => localDayKey(new Date(s.date)) === yesterdayKey)
     .reduce((acc, s) => acc + s.totalPrice, 0);
 
   const salesDeltaPct =
@@ -102,13 +103,13 @@ export default function Dashboard() {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
-      const dayKey = d.toISOString().split("T")[0];
+      const dayKey = localDayKey(d);
       const label = d.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
       result.push({ dayKey, label, total: 0 });
     }
     const index = new Map(result.map((r, idx) => [r.dayKey, idx]));
     for (const s of sales ?? []) {
-      const key = new Date(s.date).toISOString().split("T")[0];
+      const key = localDayKey(new Date(s.date));
       const i = index.get(key);
       if (typeof i === "number") result[i] = { ...result[i], total: result[i].total + s.totalPrice };
     }
@@ -249,18 +250,18 @@ export default function Dashboard() {
   ]);
 
   return (
-    <div className="space-y-6 sm:space-y-8">
+    <div className="space-y-4 sm:space-y-6">
       <HeroSection isOnline={isOnline} />
       <StatsCards cards={statCards} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2">
           <SalesChart salesByDay={salesByDay} />
         </div>
         <QuickActions />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm p-5">
           <div className="text-sm font-medium text-[#64748b]">Expense trend (7 days)</div>
           <div className="mt-3 h-10">
@@ -313,7 +314,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <RecentActivity items={activityItems} />
         <InventorySnapshot items={lowStockItemsTop5} />
       </div>

@@ -4,7 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle, BarChart3, Soup } from "lucide-react";
+import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle, BarChart3 } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { getSession } from "@/lib/auth";
+import { canAccessPath, normalizePermissions } from "@/lib/rbac";
 
 const nav = [
   { href: "/", label: "Home", icon: Home, isAction: false as const },
@@ -34,11 +38,23 @@ const addActions = [
 export function MobileBottomNav() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const session = getSession();
+  const role = useLiveQuery(async () => {
+    const roleId = session?.roleId ?? 0;
+    if (!roleId) return null;
+    return (await db.roles.get(roleId)) ?? null;
+  }, [session?.roleId]);
+  const perms =
+    session?.roleId && role == null
+      ? normalizePermissions(["*"])
+      : normalizePermissions(role?.permissions as string[] | undefined);
+  const visibleNav = nav.filter((i) => i.isAction || canAccessPath(perms, i.href));
+  const visibleAddActions = addActions.filter((a) => canAccessPath(perms, a.href));
 
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-slate-900/50" onClick={() => setIsOpen(false)} />
           <div className="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-xl border border-slate-200 p-4">
             <div className="flex items-center justify-between">
@@ -54,7 +70,7 @@ export function MobileBottomNav() {
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2">
-              {addActions.map((a) => {
+              {visibleAddActions.map((a) => {
                 const Icon = a.icon;
                 return (
                   <Link
@@ -73,9 +89,12 @@ export function MobileBottomNav() {
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-white border-t border-slate-200">
-        <div className="grid grid-cols-5">
-          {nav.map((item) => {
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-30 lg:hidden bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom,0px)]"
+        aria-label="Primary"
+      >
+        <div className="grid grid-cols-5 max-w-lg mx-auto w-full">
+          {visibleNav.map((item) => {
             const Icon = item.icon;
             const isActive = !item.isAction && pathname === item.href;
             if (item.isAction) {

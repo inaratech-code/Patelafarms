@@ -4,20 +4,22 @@ import {
   db,
   type DayBookEntry,
   type FinancialAccount,
-  type ConsumptionLog,
   type InventoryItem,
-  type InventoryLoss,
   type LedgerAccount,
   type Payment,
   type Purchase,
+  type Role,
   type Sale,
   type StockMovement,
   type SyncEvent,
   type SyncEventOp,
+  type User,
 } from "@/lib/db";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getSyncState, setSyncState } from "@/lib/syncState";
 import { ensureFarm, getFarmId } from "@/lib/farm";
+import { makeSyncEvent } from "@/lib/syncEvents";
+import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -33,6 +35,126 @@ function asString(v: unknown): string | undefined {
 }
 function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+const ROLE_USER_OUTBOX_BACKFILL = "pf.roleUserOutboxV1";
+
+async function upsertRoleFromSyncPayload(roleRaw: unknown) {
+  const r = asRecord(roleRaw);
+  const uid = r ? asString(r.uid) : undefined;
+  if (!uid) return undefined;
+  const row: Omit<Role, "id"> = {
+    uid,
+    name: String(r?.name ?? "role"),
+    description: asString(r?.description),
+    permissions: Array.isArray(r?.permissions) ? (r.permissions as string[]) : [],
+    isSystem: Boolean(r?.isSystem),
+  };
+  const existing = await db.roles.where("uid").equals(uid).first();
+  if (existing?.id) {
+    await db.roles.update(existing.id, row);
+    return existing.id;
+  }
+  return await db.roles.add(row);
+}
+
+async function upsertUserFromSyncPayload(payload: unknown) {
+  const p = asRecord(payload);
+  const er = p ? asRecord(p.embeddedRole) : undefined;
+  if (er) await upsertRoleFromSyncPayload(er);
+  const u = p ? asRecord(p.user) : undefined;
+  const uid = u ? asString(u.uid) : undefined;
+  if (!uid) return;
+  const roleUid = er ? asString(er.uid) : undefined;
+  let roleId = 0;
+  if (roleUid) {
+    const rl = await db.roles.where("uid").equals(roleUid).first();
+    if (rl?.id) roleId = rl.id;
+  }
+  if (!roleId && er) {
+    const nm = asString(er.name);
+    if (nm) {
+      const rl = await db.roles.filter((x) => x.name?.toLowerCase() === nm.toLowerCase()).first();
+      if (rl?.id) roleId = rl.id;
+    }
+  }
+  if (!roleId) {
+    const any = await db.roles.orderBy("id").first();
+    if (any?.id) roleId = any.id;
+  }
+  if (!roleId) return;
+
+  const row: Omit<User, "id"> = {
+    uid,
+    username: String(u?.username ?? "").trim(),
+    email: asString(u?.email),
+    phone: asString(u?.phone),
+    passwordHash: asString(u?.passwordHash),
+    roleId,
+  };
+  const found = await db.users.where("uid").equals(uid).first();
+  if (found?.id) await db.users.update(found.id, row);
+  else await db.users.add(row);
+}
+
+/** One-time: emit role/user snapshot events so other devices can log in after pull. */
+export async function enqueueRoleUserOutboxBackfillOnce() {
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem(ROLE_USER_OUTBOX_BACKFILL)) return;
+
+  const roles = await db.roles.toArray();
+  const users = await db.users.toArray();
+  const roleById = new Map<number, Role>();
+  for (const r of roles) if (typeof r.id === "number") roleById.set(r.id, r);
+
+  await db.transaction("rw", db.outbox, async () => {
+    for (const r of roles) {
+      if (!r.uid) continue;
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "role.record",
+          entityId: r.uid,
+          op: "create",
+          payload: { role: { ...r } },
+        })
+      );
+    }
+    for (const u of users) {
+      if (!u.uid) continue;
+      const role = typeof u.roleId === "number" ? roleById.get(u.roleId) : undefined;
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "user.record",
+          entityId: u.uid,
+          op: "create",
+          payload: {
+            user: { ...u },
+            embeddedRole: role?.uid ? { ...role } : undefined,
+          },
+        })
+      );
+    }
+  });
+
+  localStorage.setItem(ROLE_USER_OUTBOX_BACKFILL, "1");
+}
+
+/** Push updated user (e.g. password) so other devices stay in sync. */
+export async function enqueueUserRecordOutbox(userId: number) {
+  const user = await db.users.get(userId);
+  if (!user?.uid) return;
+  const role = typeof user.roleId === "number" ? await db.roles.get(user.roleId) : undefined;
+  await db.outbox.add(
+    makeSyncEvent({
+      entityType: "user.record",
+      entityId: user.uid,
+      op: "update",
+      payload: {
+        user: { ...user },
+        embeddedRole: role?.uid ? { ...role } : undefined,
+      },
+    })
+  );
 }
 
 function toSupabaseRow(e: SyncEvent) {
@@ -62,11 +184,36 @@ function fromSupabaseRow(r: unknown): SyncEvent {
   };
 }
 
+/** Push Dexie password hashes to farm_cloud_logins so new devices can sign in with the same password. */
+async function publishAllFarmCloudLoginsFromDexie() {
+  try {
+    const farmId = getFarmId();
+    if (!farmId) return;
+    const supabase = getSupabaseClient();
+    for (const u of await db.users.toArray()) {
+      const name = u.username?.trim();
+      const h = u.passwordHash?.trim();
+      if (!name || !h) continue;
+      const { error } = await supabase.rpc("upsert_farm_cloud_login", {
+        p_farm_id: farmId,
+        p_username: name,
+        p_password_hash: h,
+      });
+      if (error) console.warn("upsert_farm_cloud_login", name, error.message);
+    }
+  } catch {
+    /* offline or RPC not deployed */
+  }
+}
+
 export async function pushOutbox() {
   const supabase = getSupabaseClient();
   await ensureSupabaseAuth();
   await ensureFarm();
-  const pending = await db.outbox.where("pushedAt").equals(undefined as unknown as string).toArray();
+  await enqueueRoleUserOutboxBackfillOnce();
+  await publishAllFarmCloudLoginsFromDexie();
+  // Dexie rejects .equals(undefined); pending rows have no pushedAt (or empty).
+  const pending = await db.outbox.filter((e) => !e.pushedAt).toArray();
   if (pending.length === 0) return { pushed: 0 };
 
   // Insert in chunks to avoid large payloads.
@@ -75,16 +222,38 @@ export async function pushOutbox() {
   for (let i = 0; i < pending.length; i += chunkSize) {
     const chunk = pending.slice(i, i + chunkSize);
     const rows = chunk.map(toSupabaseRow);
-    const { error } = await supabase.from("events").insert(rows);
-    if (error) throw error;
-
     const nowIso = new Date().toISOString();
-    await db.transaction("rw", db.outbox, async () => {
+    const { error } = await supabase.from("events").insert(rows);
+    if (error) {
+      const code = (error as { code?: string }).code;
+      const msg = String(error.message ?? "");
+      const isDup = code === "23505" || msg.includes("duplicate key") || msg.includes("events_pkey");
+      if (!isDup) throw error;
+      // One duplicate in a batch fails the whole insert; flush row-by-row so the rest still sync.
       for (const e of chunk) {
-        await db.outbox.update(e.id, { pushedAt: nowIso });
+        const { error: rowErr } = await supabase.from("events").insert([toSupabaseRow(e)]);
+        if (!rowErr) {
+          await db.outbox.update(e.id, { pushedAt: nowIso });
+          pushed += 1;
+          continue;
+        }
+        const rc = (rowErr as { code?: string }).code;
+        const rm = String(rowErr.message ?? "");
+        if (rc === "23505" || rm.includes("duplicate key") || rm.includes("events_pkey")) {
+          await db.outbox.update(e.id, { pushedAt: nowIso });
+          pushed += 1;
+        } else {
+          throw rowErr;
+        }
       }
-    });
-    pushed += chunk.length;
+    } else {
+      await db.transaction("rw", db.outbox, async () => {
+        for (const e of chunk) {
+          await db.outbox.update(e.id, { pushedAt: nowIso });
+        }
+      });
+      pushed += chunk.length;
+    }
   }
 
   return { pushed };
@@ -115,7 +284,13 @@ export async function pullEvents() {
 
 export async function applyEvents(events: SyncEvent[]) {
   // Idempotency: skip events already applied.
-  const existing = new Set<string>((await db.outbox.toArray()).map((e) => e.id));
+  // Avoid loading the entire outbox (can be large on mobile). Use bulkGet by ids.
+  const ids = events.map((e) => e.id);
+  const existingRows = await db.outbox.bulkGet(ids);
+  const existing = new Set<string>();
+  for (let i = 0; i < ids.length; i++) {
+    if (existingRows[i]) existing.add(ids[i]);
+  }
   const nowIso = new Date().toISOString();
 
   await db.transaction("rw", db.tables, async () => {
@@ -179,16 +354,14 @@ export async function applyEvents(events: SyncEvent[]) {
         });
       };
 
-      const getInventoryItemIdByUid = async (itemUid: string, entityType: string) => {
-        const inv = await db.inventory.where("uid").equals(itemUid).first();
-        if (typeof inv?.id !== "number") {
-          throw new Error(`Cannot apply ${entityType}: inventory item ${itemUid} is missing`);
-        }
-        return inv;
-      };
-
       // Apply minimal event types we currently emit.
       const payload = asRecord(e.payload);
+      if (e.entityType === "farm.reset" && e.op === "create") {
+        // Clear local business data; keep users/roles so logins still work.
+        // Do this early so any subsequent events in the batch don't resurrect old state.
+        await resetBusinessDataLocal({ keepUsersAndRoles: true });
+        setSyncState({});
+      }
       if (e.entityType === "inventory.item" && e.op === "create") {
         const item = asRecord(payload?.item);
         const uid = item ? asString(item.uid) : undefined;
@@ -263,6 +436,10 @@ export async function applyEvents(events: SyncEvent[]) {
           if (!found) await db.ledgerAccounts.add(account as unknown as Omit<LedgerAccount, "id">);
         }
       }
+      if (e.entityType === "ledger.account" && e.op === "delete") {
+        const uid = asString(payload?.uid) ?? e.entityId;
+        if (uid) await db.ledgerAccounts.where("uid").equals(uid).delete();
+      }
       if (e.entityType === "stock.movement" && e.op === "create") {
         const movement = asRecord(payload?.movement);
         const uid = movement ? asString(movement.uid) : undefined;
@@ -311,6 +488,25 @@ export async function applyEvents(events: SyncEvent[]) {
           }
         }
       }
+      if (e.entityType === "role.record" && e.op === "create") {
+        const role = asRecord(payload?.role);
+        if (role) await upsertRoleFromSyncPayload(role);
+      }
+      if (e.entityType === "role.record" && e.op === "update") {
+        const role = asRecord(payload?.role);
+        if (role) await upsertRoleFromSyncPayload(role);
+      }
+      if (e.entityType === "role.record" && e.op === "delete") {
+        const uid = asString(payload?.uid) ?? e.entityId;
+        if (uid) await db.roles.where("uid").equals(uid).delete();
+      }
+      if (e.entityType === "user.record" && (e.op === "create" || e.op === "update")) {
+        await upsertUserFromSyncPayload(payload);
+      }
+      if (e.entityType === "user.record" && e.op === "delete") {
+        const uid = asString(payload?.uid) ?? e.entityId;
+        if (uid) await db.users.where("uid").equals(uid).delete();
+      }
       if (e.entityType === "order.purchase" && e.op === "create") {
         const purchasesArr = asArray(payload?.purchases);
         const movementsArr = asArray(payload?.movements);
@@ -357,124 +553,9 @@ export async function applyEvents(events: SyncEvent[]) {
           }
         }
       }
-      if (e.entityType === "inventory.loss" && e.op === "create") {
-        const loss = asRecord(payload?.loss);
-        const movement = asRecord(payload?.movement);
-        const lossUid = loss ? asString(loss.uid) : undefined;
-        const movementUid = movement ? asString(movement.uid) : undefined;
-        const itemUid = (loss ? asString(loss.itemUid) : undefined) ?? (movement ? asString(movement.itemUid) : undefined);
 
-        if (lossUid && loss && itemUid) {
-          const found = await db.inventoryLosses.where("uid").equals(lossUid).first();
-          if (!found) {
-            const inv = await getInventoryItemIdByUid(itemUid, e.entityType);
-            const quantity = Number(loss.quantity ?? 0) || Math.abs(Number(movement?.delta ?? 0));
-            const delta = asNumber(movement?.delta) ?? -quantity;
-            await db.inventory.update(inv.id!, { quantity: (inv.quantity ?? 0) + delta });
-
-            await db.inventoryLosses.add({
-              ...(loss as AnyRecord),
-              itemId: inv.id!,
-              unit: String(loss.unit ?? inv.unit ?? ""),
-            } as unknown as Omit<InventoryLoss, "id">);
-
-            if (movementUid) {
-              const existingMovement = await db.stockMovement.where("uid").equals(movementUid).first();
-              if (!existingMovement) {
-                await db.stockMovement.add({
-                  uid: movementUid,
-                  itemId: inv.id!,
-                  quantity,
-                  type: "OUT",
-                  reason: "Loss",
-                  date: String(loss.date ?? e.createdAt),
-                });
-              }
-            }
-
-            const dayBookUid = asString(payload?.dayBookUid);
-            if (dayBookUid) {
-              const existingDayBook = await db.dayBook.where("uid").equals(dayBookUid).first();
-              if (!existingDayBook) {
-                const accountId = await ensureFinancialAccountIdByUid(payload?.account);
-                const reason = asString(loss.reason);
-                const lossType = String(loss.lossType ?? "Loss");
-                const description = `Inventory loss (${lossType}): ${quantity} ${String(loss.unit ?? inv.unit ?? "")} ${inv.name}${reason ? ` - ${reason}` : ""}`;
-                const dayBookRow: AnyRecord = {
-                  uid: dayBookUid,
-                  time: String(loss.date ?? e.createdAt),
-                  type: "Expense",
-                  category: "Other",
-                  amount: Number(loss.estimatedCost ?? 0) || 0,
-                  description,
-                  method: "Cash",
-                };
-                if (typeof accountId === "number") dayBookRow.accountId = accountId;
-                await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
-              }
-            }
-          }
-        }
-      }
-      if (e.entityType === "inventory.consumption" && e.op === "create") {
-        const log = asRecord(payload?.log);
-        const movement = asRecord(payload?.movement);
-        const logUid = log ? asString(log.uid) : undefined;
-        const movementUid = movement ? asString(movement.uid) : undefined;
-        const itemUid = (log ? asString(log.itemUid) : undefined) ?? (movement ? asString(movement.itemUid) : undefined);
-
-        if (logUid && log && itemUid) {
-          const found = await db.consumptionLogs.where("uid").equals(logUid).first();
-          if (!found) {
-            const inv = await getInventoryItemIdByUid(itemUid, e.entityType);
-            const quantity = Number(log.quantity ?? 0) || Math.abs(Number(movement?.delta ?? 0));
-            const delta = asNumber(movement?.delta) ?? -quantity;
-            await db.inventory.update(inv.id!, { quantity: (inv.quantity ?? 0) + delta });
-
-            await db.consumptionLogs.add({
-              ...(log as AnyRecord),
-              itemId: inv.id!,
-            } as unknown as Omit<ConsumptionLog, "id">);
-
-            if (movementUid) {
-              const existingMovement = await db.stockMovement.where("uid").equals(movementUid).first();
-              if (!existingMovement) {
-                await db.stockMovement.add({
-                  uid: movementUid,
-                  itemId: inv.id!,
-                  quantity,
-                  type: "OUT",
-                  reason: "Usage",
-                  date: String(log.date ?? e.createdAt),
-                });
-              }
-            }
-
-            const dayBookUid = asString(payload?.dayBookUid);
-            if (dayBookUid) {
-              const existingDayBook = await db.dayBook.where("uid").equals(dayBookUid).first();
-              if (!existingDayBook) {
-                const accountId = await ensureFinancialAccountIdByUid(payload?.account);
-                const dayBookRow: AnyRecord = {
-                  uid: dayBookUid,
-                  time: String(log.date ?? e.createdAt),
-                  type: "Expense",
-                  category: "Other",
-                  amount: Number(log.cost ?? 0) || 0,
-                  description: `Consumption (${String(log.category ?? "farm_use")}): ${quantity} ${inv.unit} ${inv.name}`,
-                  method: "Cash",
-                  refType: "consumption",
-                  refId: logUid,
-                };
-                if (typeof accountId === "number") dayBookRow.accountId = accountId;
-                await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
-              }
-            }
-          }
-        }
-      }
-
-      await db.outbox.add({ ...e, appliedAt: nowIso, pushedAt: e.pushedAt ?? nowIso });
+      // Mark as already on server so pushOutbox does not re-insert (duplicate events_pkey).
+      await db.outbox.add({ ...e, appliedAt: nowIso, pushedAt: e.pushedAt ?? e.createdAt });
       existing.add(e.id);
     }
   });

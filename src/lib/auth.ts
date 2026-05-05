@@ -1,4 +1,7 @@
 import { db } from "@/lib/db";
+import { enqueueUserRecordOutbox } from "@/lib/sync";
+import { ensureFarm, publishFarmCloudLogin } from "@/lib/farm";
+import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 
 export const SESSION_KEY = "pf.session.v1";
 
@@ -45,13 +48,19 @@ export async function sha256Base64(input: string) {
   return btoa(bin);
 }
 
+async function findLocalUserByUsername(usernameTrimmed: string) {
+  const un = usernameTrimmed.toLowerCase();
+  const all = await db.users.toArray();
+  return all.find((u) => u.username.trim().toLowerCase() === un);
+}
+
 export async function loginWithPassword(params: { username: string; password: string }) {
   const username = params.username.trim();
   const password = params.password;
   if (!username) throw new Error("Username is required");
   if (!password) throw new Error("Password is required");
 
-  const user = await db.users.where("username").equals(username).first();
+  const user = await findLocalUserByUsername(username);
   if (!user?.id) throw new Error("User not found");
   if (!user.passwordHash) throw new Error("User has no password set");
 
@@ -59,35 +68,39 @@ export async function loginWithPassword(params: { username: string; password: st
   if (hash !== user.passwordHash) throw new Error("Invalid password");
 
   setSession({ userId: user.id, username: user.username, roleId: user.roleId });
+
+  void (async () => {
+    try {
+      getSupabaseClient();
+      await ensureSupabaseAuth();
+      await ensureFarm();
+      await publishFarmCloudLogin(user.username, hash);
+    } catch {
+      /* Supabase not configured or offline */
+    }
+  })();
+
   return { userId: user.id, roleId: user.roleId };
 }
 
-async function getOrCreateAdminRoleId() {
-  const existing = await db.roles.where("name").equals("admin").first();
-  if (typeof existing?.id === "number") return existing.id;
-  const id = await db.roles.add({
-    name: "admin",
-    description: "Full access to all sections",
-    permissions: ["*"],
-    isSystem: true,
-  });
-  if (typeof id !== "number") throw new Error("Failed to create admin role");
-  return id;
-}
-
-export async function demoLogin() {
-  const roleId = await getOrCreateAdminRoleId();
-
-  const username = "demo";
-  let user = await db.users.where("username").equals(username).first();
-  if (!user?.id) {
-    const passwordHash = await sha256Base64("demo");
-    const id = await db.users.add({ username, roleId, passwordHash });
-    user = { id: id as number, username, roleId, passwordHash };
+export async function changePassword(params: {
+  userId: number;
+  currentPassword: string;
+  newPassword: string;
+}) {
+  const { userId, currentPassword, newPassword } = params;
+  if (newPassword.length < 4 || newPassword.length > 20) {
+    throw new Error("New password must be between 4 and 20 characters");
   }
+  const user = await db.users.get(userId);
+  if (!user?.id) throw new Error("User not found");
+  if (!user.passwordHash) throw new Error("This account has no password set");
 
-  if (!user?.id) throw new Error("Failed to create demo user");
-  setSession({ userId: user.id, username: user.username, roleId: user.roleId });
-  return { userId: user.id, roleId: user.roleId };
+  const curHash = await sha256Base64(currentPassword);
+  if (curHash !== user.passwordHash) throw new Error("Current password is incorrect");
+
+  const newHash = await sha256Base64(newPassword);
+  await db.users.update(userId, { passwordHash: newHash });
+  await enqueueUserRecordOutbox(userId);
+  void publishFarmCloudLogin(user.username, newHash);
 }
-

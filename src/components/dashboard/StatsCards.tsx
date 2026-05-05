@@ -11,7 +11,7 @@ function DeltaText(props: { deltaPct: number }) {
   const up = props.deltaPct >= 0;
   const value = Math.abs(props.deltaPct).toFixed(0);
   return (
-    <div className={cn("text-xs font-semibold", up ? "text-[#80a932]" : "text-rose-600")}>
+    <div className={cn("text-[10px] sm:text-xs font-semibold", up ? "text-[#80a932]" : "text-rose-600")}>
       {up ? "+" : "-"}
       {value}% from yesterday
     </div>
@@ -39,34 +39,34 @@ export function StatsCards(props: { cards: StatCard[] }) {
         hidden: { opacity: 0 },
         show: { opacity: 1, transition: { staggerChildren: 0.06 } },
       }}
-      className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3"
     >
       {props.cards.map((c) => (
         <motion.div
           key={c.id}
           variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
-          whileHover={{ y: -4 }}
+          whileHover={{ y: -2 }}
           transition={{ type: "spring", stiffness: 350, damping: 25 }}
           className={cn(
-            "relative overflow-hidden rounded-2xl bg-[#ffffff] border border-[#e2e8f0] shadow-sm",
+            "relative overflow-hidden rounded-xl bg-[#ffffff] border border-[#e2e8f0] shadow-sm",
             "hover:shadow-md hover:border-[#0871b3]/40"
           )}
         >
-          <div className="p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2 min-w-0">
-                <div className="text-sm font-medium text-[#64748b] truncate">{c.title}</div>
-                <div className="text-2xl font-semibold tracking-tight text-[#0f172a]">{c.value}</div>
+          <div className="p-3 sm:p-3.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="space-y-0.5 min-w-0">
+                <div className="text-[11px] sm:text-xs font-medium text-[#64748b] truncate leading-tight">{c.title}</div>
+                <div className="text-base sm:text-lg font-semibold tracking-tight text-[#0f172a] leading-tight">{c.value}</div>
                 <DeltaText deltaPct={c.deltaPct} />
               </div>
 
-              <div className={cn("w-10 h-10 rounded-full flex items-center justify-center", c.iconBg)}>
-                <c.icon className={cn("w-5 h-5", c.iconFg)} />
+              <div className={cn("w-8 h-8 shrink-0 rounded-full flex items-center justify-center", c.iconBg)}>
+                <c.icon className={cn("w-4 h-4", c.iconFg)} />
               </div>
             </div>
 
             {c.spark && c.spark.length > 0 ? (
-              <div className="mt-4 h-10">
+              <div className="mt-2 h-7 sm:h-8">
                 <Sparkline data={c.spark} />
               </div>
             ) : null}

@@ -151,6 +151,8 @@ export interface FinancialAccount {
 
 export interface User {
   id?: number;
+  /** Stable id for cross-device sync (matches Supabase event `entity_id`). */
+  uid?: string;
   username: string;
   email?: string;
   passwordHash?: string;
@@ -160,6 +162,8 @@ export interface User {
 
 export interface Role {
   id?: number;
+  /** Stable id for cross-device sync. */
+  uid?: string;
   name: string;
   description?: string;
   permissions: string[]; // e.g. ["dashboard.read", "orders.write"]
@@ -508,6 +512,100 @@ export class PatelaFarmDatabase extends Dexie {
       .upgrade(async (tx) => {
         await tx.table("inventory").toCollection().modify((row: Record<string, unknown>) => {
           delete row.expiryDate;
+        });
+      });
+
+    this.version(13)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, name',
+        users: '++id, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+      })
+      .upgrade(async (tx) => {
+        await tx.table("roles").toCollection().modify((row: Record<string, unknown>) => {
+          const p = row.permissions;
+          if (!Array.isArray(p)) return;
+          const mapped = p.map((x) => (x === "transactions.payments" ? "accounts.payments" : x));
+          row.permissions = [...new Set(mapped as string[])];
+        });
+      });
+
+    this.version(14)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, uid, name',
+        users: '++id, uid, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+      })
+      .upgrade(async (tx) => {
+        const uuidv4 = () =>
+          (globalThis.crypto as unknown as { randomUUID?: () => string })?.randomUUID?.() ??
+          `${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+        await tx.table("roles").toCollection().modify((row: Record<string, unknown>) => {
+          if (!row.uid) row.uid = uuidv4();
+        });
+        await tx.table("users").toCollection().modify((row: Record<string, unknown>) => {
+          if (!row.uid) row.uid = uuidv4();
+        });
+      });
+
+    // Remove legacy "Walk in customer" label from persisted data.
+    this.version(15)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, uid, name',
+        users: '++id, uid, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+      })
+      .upgrade(async (tx) => {
+        const WALK_IN = "Walk in customer";
+        const CASH_LEDGER = "Cash sales & expenses";
+
+        const ledgerAccounts = tx.table("ledgerAccounts");
+        const sales = tx.table("sales");
+
+        // Update any old sales rows to not display the walk-in label.
+        await sales.toCollection().modify((row: Record<string, unknown>) => {
+          if (row.customerName === WALK_IN) delete row.customerName;
+        });
+
+        // Rename the legacy ledger account if present.
+        const all = (await ledgerAccounts.toArray()) as Array<Record<string, unknown>>;
+        const hasCashLedger = all.some((a) => a.name === CASH_LEDGER);
+        await ledgerAccounts.toCollection().modify((row: Record<string, unknown>) => {
+          if (row.name !== WALK_IN) return;
+          row.name = hasCashLedger ? `${CASH_LEDGER} (legacy)` : CASH_LEDGER;
         });
       });
 

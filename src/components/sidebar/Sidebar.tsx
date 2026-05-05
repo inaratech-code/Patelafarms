@@ -11,6 +11,7 @@ import { SidebarItem } from "@/components/sidebar/SidebarItem";
 import { sidebarGroups, sidebarTopLevel, type SidebarGroupId } from "@/components/sidebar/sidebarConfig";
 import { LogOut, Menu, X } from "lucide-react";
 import { clearSession, getSession } from "@/lib/auth";
+import { canAccessPath, normalizePermissions } from "@/lib/rbac";
 
 type SidebarContextValue = {
   openMobile: () => void;
@@ -85,7 +86,7 @@ function MobileSidebarDrawer(props: { open: boolean; onClose: () => void }) {
   return (
     <AnimatePresence>
       {props.open ? (
-        <motion.div className="fixed inset-0 z-50 md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+        <motion.div className="fixed inset-0 z-50 lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <div className="absolute inset-0 bg-slate-900/50" onClick={props.onClose} />
           <motion.div
             initial={{ x: -320 }}
@@ -104,7 +105,7 @@ function MobileSidebarDrawer(props: { open: boolean; onClose: () => void }) {
 
 export function SidebarDesktop() {
   return (
-    <aside className="hidden md:flex md:flex-col fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200">
+    <aside className="hidden lg:flex lg:flex-col fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200">
       <SidebarContent variant="desktop" />
     </aside>
   );
@@ -117,6 +118,16 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
   const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray()) || [];
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
   const session = useMemo(() => getSession(), [pathname]);
+  const role = useLiveQuery(async () => {
+    const roleId = session?.roleId ?? 0;
+    if (!roleId) return null;
+    return (await db.roles.get(roleId)) ?? null;
+  }, [session?.roleId]);
+  const perms = useMemo(() => {
+    // While the role record is loading, don't hide nav items (prevents "blank" sidebar flash).
+    if (session?.roleId && role == null) return normalizePermissions(["*"]);
+    return normalizePermissions(role?.permissions as string[] | undefined);
+  }, [role, session?.roleId]);
 
   const alertBadge = useMemo(
     () => computeAlertBadge({ inventory, ledgerAccounts, ledgerEntries }),
@@ -191,47 +202,59 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
       </div>
 
       <nav className={cn("p-3 space-y-2 flex-1 overflow-y-auto")}>
-        {sidebarTopLevel.slice(0, 2).map((item) => (
-          <SidebarItem
-            key={item.id}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={activeHref === item.href}
-            isCollapsed={isCollapsed}
-            badgeCount={item.badge === "alerts" ? alertBadge : undefined}
-            onNavigate={props.onNavigate}
-          />
-        ))}
+        {sidebarTopLevel
+          .slice(0, 2)
+          .filter((item) => canAccessPath(perms, item.href))
+          .map((item) => (
+            <SidebarItem
+              key={item.id}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={activeHref === item.href}
+              isCollapsed={isCollapsed}
+              badgeCount={item.badge === "alerts" ? alertBadge : undefined}
+              onNavigate={props.onNavigate}
+            />
+          ))}
 
         <div className="h-px bg-slate-100 my-2" />
 
-        {sidebarGroups.map((g) => (
-          <SidebarGroup
-            key={g.id}
-            group={g}
-            isOpen={openGroups[g.id]}
-            onToggle={() => toggleGroup(g.id)}
-            activeHref={activeHref}
-            isCollapsed={isCollapsed}
-            onNavigate={props.onNavigate}
-          />
-        ))}
+        {sidebarGroups
+          .map((g) => ({
+            ...g,
+            items: g.items.filter((it) => canAccessPath(perms, it.href)),
+          }))
+          .filter((g) => g.items.length > 0)
+          .map((g) => (
+            <SidebarGroup
+              key={g.id}
+              group={g}
+              isOpen={openGroups[g.id]}
+              onToggle={() => toggleGroup(g.id)}
+              activeHref={activeHref}
+              isCollapsed={isCollapsed}
+              onNavigate={props.onNavigate}
+            />
+          ))}
 
         <div className="h-px bg-slate-100 my-2" />
 
-        {sidebarTopLevel.slice(2).map((item) => (
-          <SidebarItem
-            key={item.id}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={activeHref === item.href}
-            isCollapsed={isCollapsed}
-            badgeCount={item.badge === "alerts" ? alertBadge : undefined}
-            onNavigate={props.onNavigate}
-          />
-        ))}
+        {sidebarTopLevel
+          .slice(2)
+          .filter((item) => canAccessPath(perms, item.href))
+          .map((item) => (
+            <SidebarItem
+              key={item.id}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              isActive={activeHref === item.href}
+              isCollapsed={isCollapsed}
+              badgeCount={item.badge === "alerts" ? alertBadge : undefined}
+              onNavigate={props.onNavigate}
+            />
+          ))}
       </nav>
 
       <div className={cn("p-4 border-t border-slate-200 text-xs text-slate-500", isCollapsed ? "text-center" : "")}>

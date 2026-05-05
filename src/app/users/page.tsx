@@ -1,22 +1,30 @@
 "use client";
 
-import { Users, UserPlus, Trash2, ShieldPlus, X } from "lucide-react";
+import { Users, UserPlus, Trash2, ShieldPlus, X, Eye, EyeOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { sha256Base64 } from "@/lib/auth";
+import { makeSyncEvent } from "@/lib/syncEvents";
+import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/farm";
+import { ensureSupabaseAuth } from "@/lib/supabaseClient";
+import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 
 type PermissionId =
   | "dashboard"
+  | "reports"
   | "outstanding"
   | "inventory.items"
+  | "inventory.consumption"
   | "inventory.stockMovement"
+  | "inventory.lossWastage"
+  | "transactions.overview"
   | "transactions.sales"
-  | "transactions.payments"
   | "transactions.purchases"
   | "transactions.expenses"
   | "accounts.ledger"
   | "accounts.dayBook"
+  | "accounts.payments"
   | "accounts.accounts"
   | "people.customers"
   | "people.suppliers"
@@ -25,6 +33,7 @@ type PermissionId =
   | "alerts"
   | "settings";
 
+/** Matches `sidebarConfig` routes and labels for role-based access configuration. */
 const PERMISSION_GROUPS: Array<{
   id: "top" | "inventory" | "transactions" | "accounts" | "people" | "bottom";
   label: string;
@@ -35,6 +44,7 @@ const PERMISSION_GROUPS: Array<{
     label: "General",
     items: [
       { id: "dashboard", label: "Dashboard" },
+      { id: "reports", label: "Reports" },
       { id: "outstanding", label: "Outstanding" },
     ],
   },
@@ -43,15 +53,17 @@ const PERMISSION_GROUPS: Array<{
     label: "Inventory",
     items: [
       { id: "inventory.items", label: "Items" },
+      { id: "inventory.consumption", label: "Feed usage" },
       { id: "inventory.stockMovement", label: "Stock Movement" },
+      { id: "inventory.lossWastage", label: "Loss / Wastage" },
     ],
   },
   {
     id: "transactions",
     label: "Transactions",
     items: [
+      { id: "transactions.overview", label: "Overview" },
       { id: "transactions.sales", label: "Sales" },
-      { id: "transactions.payments", label: "Payments" },
       { id: "transactions.purchases", label: "Purchases" },
       { id: "transactions.expenses", label: "Expenses" },
     ],
@@ -62,7 +74,8 @@ const PERMISSION_GROUPS: Array<{
     items: [
       { id: "accounts.ledger", label: "Ledger" },
       { id: "accounts.dayBook", label: "Day Book" },
-      { id: "accounts.accounts", label: "Accounts" },
+      { id: "accounts.payments", label: "Payments" },
+      { id: "accounts.accounts", label: "Financial Accounts" },
     ],
   },
   {
@@ -114,6 +127,7 @@ export default function UsersPage() {
 
   const [showCreateRole, setShowCreateRole] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showUserPassword, setShowUserPassword] = useState({ password: false, confirm: false });
 
   const [roleForm, setRoleForm] = useState({
     name: "",
@@ -141,6 +155,10 @@ export default function UsersPage() {
     setUserForm((v) => (v.roleId ? v : { ...v, roleId: firstRoleId }));
   }, [firstRoleId]);
 
+  useEffect(() => {
+    if (!showCreateUser) setShowUserPassword({ password: false, confirm: false });
+  }, [showCreateUser]);
+
   const selectedRole = roleById.get(userForm.roleId);
   const isAdminRole = selectedRole?.name?.toLowerCase?.() === "admin";
 
@@ -148,11 +166,27 @@ export default function UsersPage() {
     e.preventDefault();
     const name = roleForm.name.trim();
     if (!name) return;
-    await db.roles.add({
+    const roleUid =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const newRoleId = await db.roles.add({
+      uid: roleUid,
       name,
       description: roleForm.description.trim() || undefined,
       permissions: Array.from(roleForm.permissions) as string[],
     });
+    const createdRole = await db.roles.get(newRoleId);
+    if (createdRole?.uid) {
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "role.record",
+          entityId: createdRole.uid,
+          op: "create",
+          payload: { role: { ...createdRole } },
+        })
+      );
+    }
     setShowCreateRole(false);
     setRoleForm({ name: "", description: "", permissions: new Set<PermissionId>(DEFAULT_PERMISSIONS) });
   };
@@ -166,13 +200,40 @@ export default function UsersPage() {
     if (isAdminRole && !userForm.email.trim()) return;
 
     const passwordHash = await sha256Base64(userForm.password);
-    await db.users.add({
+    const userUid =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const newUserId = await db.users.add({
+      uid: userUid,
       username: userForm.username.trim(),
       roleId: userForm.roleId,
       email: userForm.email.trim() || undefined,
       phone: userForm.phone.trim() || undefined,
       passwordHash,
     });
+    const createdUser = await db.users.get(newUserId);
+    const role = await db.roles.get(userForm.roleId);
+    if (createdUser?.uid) {
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "user.record",
+          entityId: createdUser.uid,
+          op: "create",
+          payload: {
+            user: { ...createdUser },
+            embeddedRole: role?.uid ? { ...role } : undefined,
+          },
+        })
+      );
+    }
+    try {
+      await ensureSupabaseAuth();
+      await ensureFarm();
+      await publishFarmCloudLogin(createdUser!.username, passwordHash);
+    } catch {
+      /* offline or Supabase not configured */
+    }
     setShowCreateUser(false);
     setUserForm({
       username: "",
@@ -438,30 +499,52 @@ export default function UsersPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Password *</label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="4-20 characters"
-                    value={userForm.password}
-                    onChange={(e) => setUserForm((v) => ({ ...v, password: e.target.value }))}
-                    minLength={4}
-                    maxLength={20}
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showUserPassword.password ? "text" : "password"}
+                      className="w-full rounded-md border border-slate-200 bg-white pl-3 pr-11 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="4-20 characters"
+                      value={userForm.password}
+                      onChange={(e) => setUserForm((v) => ({ ...v, password: e.target.value }))}
+                      minLength={4}
+                      maxLength={20}
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUserPassword((s) => ({ ...s, password: !s.password }))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={showUserPassword.password ? "Hide password" : "Show password"}
+                    >
+                      {showUserPassword.password ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.password.length, 20)}/20</div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Confirm Password *</label>
-                  <input
-                    type="password"
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="Re-enter password"
-                    value={userForm.confirmPassword}
-                    onChange={(e) => setUserForm((v) => ({ ...v, confirmPassword: e.target.value }))}
-                    minLength={4}
-                    maxLength={20}
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showUserPassword.confirm ? "text" : "password"}
+                      className="w-full rounded-md border border-slate-200 bg-white pl-3 pr-11 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="Re-enter password"
+                      value={userForm.confirmPassword}
+                      onChange={(e) => setUserForm((v) => ({ ...v, confirmPassword: e.target.value }))}
+                      minLength={4}
+                      maxLength={20}
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUserPassword((s) => ({ ...s, confirm: !s.confirm }))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={showUserPassword.confirm ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showUserPassword.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.confirmPassword.length, 20)}/20</div>
                 </div>
               </div>
@@ -529,7 +612,30 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.phone || "-"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onClick={() => db.users.delete(user.id!)} className="text-alert-red hover:text-alert-red/80">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!user.id) return;
+                        const ok = await requirePasswordConfirm({
+                          title: "Delete user",
+                          message: `Delete user "${user.username}"?`,
+                        });
+                        if (!ok) return;
+                        if (user.uid) {
+                          await db.outbox.add(
+                            makeSyncEvent({
+                              entityType: "user.record",
+                              entityId: user.uid,
+                              op: "delete",
+                              payload: { uid: user.uid },
+                            })
+                          );
+                        }
+                        await deleteFarmCloudLogin(user.username);
+                        await db.users.delete(user.id);
+                      }}
+                      className="text-alert-red hover:text-alert-red/80"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>

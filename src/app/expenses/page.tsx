@@ -7,6 +7,7 @@ import { db, type DayBookEntry } from "@/lib/db";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
+import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { useRouter } from "next/navigation";
 
 const expenseCategories: Array<DayBookEntry["category"]> = ["Transport", "Wage", "Other"];
@@ -69,6 +70,35 @@ export default function ExpensesPage() {
 
       await db.transaction("rw", db.tables, async () => {
         const id = await db.dayBook.add(entry);
+        const cashLedgerId = await getOrCreateCashLedgerAccountId();
+        const ledgerEntryId = (await addLedgerEntry({
+          accountId: cashLedgerId,
+          date: time,
+          description: `Expense: ${entry.description}`,
+          debit: 0,
+          credit: amount,
+        })) as number;
+        const acct = await db.ledgerAccounts.get(cashLedgerId);
+        const entryRow = await db.ledgerEntries.get(ledgerEntryId);
+        if (acct?.uid && entryRow?.uid) {
+          await db.outbox.add(
+            makeSyncEvent({
+              entityType: "ledger.entry",
+              entityId: entryRow.uid,
+              op: "create",
+              payload: {
+                account: { uid: acct.uid, name: acct.name, type: acct.type },
+                entry: {
+                  uid: entryRow.uid,
+                  date: entryRow.date,
+                  description: entryRow.description,
+                  debit: entryRow.debit,
+                  credit: entryRow.credit,
+                },
+              },
+            })
+          );
+        }
         await db.outbox.add(
           makeSyncEvent({
             entityType: "daybook.expense",

@@ -8,8 +8,7 @@ import { db, type PaymentStatusErp } from "@/lib/db";
 import {
   addLedgerEntry,
   getOrCreateLedgerAccountId,
-  getOrCreateWalkInCustomerAccountId,
-  WALK_IN_CUSTOMER_NAME,
+  getOrCreateCashLedgerAccountId,
 } from "@/lib/ledger";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
@@ -70,11 +69,9 @@ export default function OrdersPage() {
       const n = s.customerName?.trim();
       if (n) names.add(n);
     }
-    names.add(WALK_IN_CUSTOMER_NAME);
     const rest = Array.from(names)
-      .filter((n) => n !== WALK_IN_CUSTOMER_NAME)
       .sort((a, b) => a.localeCompare(b));
-    return [WALK_IN_CUSTOMER_NAME, ...rest];
+    return rest;
   }, [ledgerCustomers, sales]);
 
   const supplierOptions = useMemo(
@@ -106,7 +103,7 @@ export default function OrdersPage() {
     financialAccountId: number;
   }>({
     itemId: 0,
-    customerName: WALK_IN_CUSTOMER_NAME,
+    customerName: "",
     paymentType: "Cash",
     method: "Cash",
     financialAccountId: 0,
@@ -184,16 +181,13 @@ export default function OrdersPage() {
     const date = new Date().toISOString();
 
     const isCredit = saleForm.paymentType === "Credit";
-    const customerNameResolved =
-      saleForm.customerName.trim() || WALK_IN_CUSTOMER_NAME;
-    if (isCredit && !customerNameResolved.trim()) {
+    const customerNameResolved = saleForm.customerName.trim();
+    if (isCredit && !customerNameResolved) {
       return alert("Customer name is required for Credit sales (for ledger).");
     }
 
     await db.transaction('rw', db.tables, async () => {
-      if (!isCredit && customerNameResolved === WALK_IN_CUSTOMER_NAME) {
-        await getOrCreateWalkInCustomerAccountId();
-      }
+      const cashLedgerAccountId = !isCredit ? await getOrCreateCashLedgerAccountId() : null;
 
       // 1. Record Sale
       const sale = {
@@ -202,7 +196,7 @@ export default function OrdersPage() {
         quantity: qtyParsed,
         totalPrice,
         unitPrice,
-        customerName: customerNameResolved,
+        customerName: customerNameResolved || undefined,
         paymentType: saleForm.paymentType,
         date,
         paidAmount: isCredit ? 0 : totalPrice,
@@ -253,12 +247,33 @@ export default function OrdersPage() {
         );
       }
 
-      // 5. Ledger entry (credit only)
+      // 5. Ledger entry (cash: cash ledger; credit: customer ledger)
       let ledgerAccountId: number | null = null;
       let ledgerEntryId: number | null = null;
       let ledgerAccount: any = null;
       let ledgerEntry: any = null;
-      if (isCredit) {
+      if (!isCredit && cashLedgerAccountId) {
+        ledgerAccountId = cashLedgerAccountId;
+        const acct = await db.ledgerAccounts.get(ledgerAccountId);
+        ledgerAccount = acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null;
+        ledgerEntryId = (await addLedgerEntry({
+          accountId: ledgerAccountId,
+          date,
+          description: `Cash sale: ${qtyParsed} ${item.unit} ${item.name} @ Rs.${unitPrice}/${item.unit}`,
+          debit: totalPrice,
+          credit: 0,
+        })) as number;
+        const entryRow = await db.ledgerEntries.get(ledgerEntryId);
+        ledgerEntry = entryRow?.uid
+          ? {
+              uid: entryRow.uid,
+              date: entryRow.date,
+              description: entryRow.description,
+              debit: entryRow.debit,
+              credit: entryRow.credit,
+            }
+          : null;
+      } else if (isCredit) {
         ledgerAccountId = await getOrCreateLedgerAccountId({ name: customerNameResolved, type: "Customer" });
         const acct = await db.ledgerAccounts.get(ledgerAccountId);
         ledgerAccount = acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null;
@@ -280,16 +295,16 @@ export default function OrdersPage() {
             }
           : null;
 
-        if (ledgerAccount?.uid && ledgerEntry?.uid) {
-          await db.outbox.add(
-            makeSyncEvent({
-              entityType: "ledger.entry",
-              entityId: ledgerEntry.uid,
-              op: "create",
-              payload: { account: ledgerAccount, entry: ledgerEntry },
-            })
-          );
-        }
+      }
+      if (ledgerAccount?.uid && ledgerEntry?.uid) {
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "ledger.entry",
+            entityId: ledgerEntry.uid,
+            op: "create",
+            payload: { account: ledgerAccount, entry: ledgerEntry },
+          })
+        );
       }
 
       await db.outbox.add(
@@ -314,7 +329,7 @@ export default function OrdersPage() {
     setSaleUnitPriceStr("");
     setSaleForm({
       itemId: 0,
-      customerName: WALK_IN_CUSTOMER_NAME,
+      customerName: "",
       paymentType: "Cash",
       method: "Cash",
       financialAccountId: 0,
@@ -792,7 +807,12 @@ export default function OrdersPage() {
                     <tr key={sale.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(sale.date).toLocaleDateString()}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                        {sale.customerName?.trim() || WALK_IN_CUSTOMER_NAME} ({sale.paymentType})
+                        {sale.customerName?.trim()
+                          ? sale.customerName.trim()
+                          : sale.paymentType === "Cash"
+                            ? "Cash sale"
+                            : "Credit sale"}{" "}
+                        ({sale.paymentType})
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
                         {sale.quantity}x {item?.name || "Unknown"}
