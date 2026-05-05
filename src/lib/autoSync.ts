@@ -21,6 +21,7 @@ function canUseSupabase() {
 async function tick() {
   if (_isTicking) return;
   if (!navigator.onLine) return;
+  if (localStorage.getItem("pf.resetting") === "1") return;
   const farmId = getFarmId();
   if (!farmId) return;
   try {

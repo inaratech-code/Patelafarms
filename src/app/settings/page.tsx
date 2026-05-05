@@ -134,6 +134,7 @@ export default function SettingsPage() {
     if (!ok) return;
 
     try {
+      localStorage.setItem("pf.resetting", "1");
       // Clear app localStorage keys
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -165,11 +166,13 @@ export default function SettingsPage() {
         ]);
       });
 
+      localStorage.removeItem("pf.resetting");
       // Reload to re-init DB + UI
       location.href = "/";
     } catch (e) {
       console.error(e);
-      alert("Failed to reset data. Please try again.");
+      alert(`Failed to reset data: ${e instanceof Error ? e.message : String(e)}`);
+      localStorage.removeItem("pf.resetting");
     }
   };
 
