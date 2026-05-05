@@ -34,6 +34,7 @@ export default function SettingsPage() {
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncPaused, setSyncPaused] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [farmLink, setFarmLink] = useState<{ id: string; joinCode: string } | null>(null);
   const [farmLinkError, setFarmLinkError] = useState<string>("");
 
@@ -141,6 +142,7 @@ export default function SettingsPage() {
   };
 
   const resetAllData = async () => {
+    if (isResetting) return;
     const ok = await requirePasswordConfirm({
       title: "Reset all data",
       message: "This will delete ALL saved data (inventory, ledger, day book, etc.) and reset app settings. Users will NOT be deleted.",
@@ -148,6 +150,7 @@ export default function SettingsPage() {
     if (!ok) return;
 
     try {
+      setIsResetting(true);
       localStorage.setItem("pf.resetting", "1");
       // Prevent data from being immediately re-pulled from the cloud.
       localStorage.setItem("pf.syncPaused", "1");
@@ -166,18 +169,32 @@ export default function SettingsPage() {
 
       // Wipe IndexedDB data but keep users + roles.
       // Avoid wide transactions on mobile Safari / low-memory devices.
-      await db.inventory.clear();
-      await db.inventoryLosses.clear();
-      await db.stockMovement.clear();
-      await db.sales.clear();
-      await db.purchases.clear();
-      await db.dayBook.clear();
-      await db.ledgerAccounts.clear();
-      await db.ledgerEntries.clear();
-      await db.payments.clear();
-      await db.financialAccounts.clear();
-      await db.outbox.clear();
-      await db.consumptionLogs.clear();
+      const clears: Array<[string, () => Promise<void>]> = [
+        ["inventory", () => db.inventory.clear()],
+        ["inventoryLosses", () => db.inventoryLosses.clear()],
+        ["stockMovement", () => db.stockMovement.clear()],
+        ["sales", () => db.sales.clear()],
+        ["purchases", () => db.purchases.clear()],
+        ["dayBook", () => db.dayBook.clear()],
+        ["ledgerAccounts", () => db.ledgerAccounts.clear()],
+        ["ledgerEntries", () => db.ledgerEntries.clear()],
+        ["payments", () => db.payments.clear()],
+        ["financialAccounts", () => db.financialAccounts.clear()],
+        ["outbox", () => db.outbox.clear()],
+        ["consumptionLogs", () => db.consumptionLogs.clear()],
+      ];
+
+      const failures: string[] = [];
+      for (const [name, fn] of clears) {
+        try {
+          await fn();
+        } catch (e) {
+          failures.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      if (failures.length) {
+        throw new Error(`Some tables could not be cleared:\n- ${failures.join("\n- ")}`);
+      }
 
       localStorage.removeItem("pf.resetting");
       // Reload to re-init DB + UI
@@ -186,6 +203,7 @@ export default function SettingsPage() {
       console.error(e);
       alert(`Failed to reset data: ${e instanceof Error ? e.message : String(e)}`);
       localStorage.removeItem("pf.resetting");
+      setIsResetting(false);
     }
   };
 
@@ -493,10 +511,11 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={resetAllData}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-alert-red text-white font-semibold hover:bg-alert-red/90"
+            disabled={isResetting}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-alert-red text-white font-semibold hover:bg-alert-red/90 disabled:opacity-60"
           >
             <Trash2 className="w-5 h-5" />
-            Reset All Data
+            {isResetting ? "Resetting…" : "Reset All Data"}
           </button>
           <div className="mt-2 text-xs text-slate-500">
             This deletes all locally stored data (IndexedDB) and clears app preferences (localStorage).
