@@ -44,12 +44,9 @@ export function MobileBottomNav() {
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
-  const perms =
-    session?.roleId && role == null
-      ? normalizePermissions(["*"])
-      : normalizePermissions(role?.permissions as string[] | undefined);
-  const visibleNav = nav.filter((i) => i.isAction || canAccessPath(perms, i.href));
+  const perms = normalizePermissions(role?.permissions as string[] | undefined);
   const visibleAddActions = addActions.filter((a) => canAccessPath(perms, a.href));
+  const visibleNav = nav.filter((i) => (i.isAction ? visibleAddActions.length > 0 : canAccessPath(perms, i.href)));
 
   return (
     <>
