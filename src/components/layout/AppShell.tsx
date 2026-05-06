@@ -22,9 +22,10 @@ export function AppShell(props: { children: React.ReactNode }) {
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
 
-  const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
-  const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
+  const isUsersLoading = users === undefined;
+  const isRoleLoading = Boolean(session?.roleId) && role === undefined;
+  const isBootstrapAllowed = users?.length === 0 && (pathname === "/users" || pathname === "/login");
 
   // Auto logout after 1 hour of inactivity.
   useEffect(() => {
@@ -100,12 +101,12 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
     // Wait until the role record is loaded; otherwise we can get a redirect loop on first render.
-    if (session?.roleId && role == null) return;
+    if (isRoleLoading) return;
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     if (!canAccessPath(perms, pathname || "/")) {
       window.location.replace(pickDefaultRoute(perms));
     }
-  }, [isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
+  }, [isBootstrapAllowed, isLoginRoute, isRoleLoading, pathname, role, session?.userId]);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -122,6 +123,7 @@ export function AppShell(props: { children: React.ReactNode }) {
 
   // Prevent brief flash of app before redirect.
   if (!checked && !isLoginRoute) return null;
+  if (!isLoginRoute && (isUsersLoading || isRoleLoading)) return null;
 
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;

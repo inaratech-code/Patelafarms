@@ -132,13 +132,34 @@ export function requiredPermissionsForPath(pathname: string): PermissionId[] {
   return [];
 }
 
+const DEFAULT_ROUTE_CANDIDATES = [
+  "/",
+  "/reports",
+  "/outstanding",
+  "/inventory",
+  "/consumption",
+  "/stock-movement",
+  "/loss-wastage",
+  "/transactions",
+  "/orders",
+  "/purchases",
+  "/expenses",
+  "/ledger",
+  "/daybook",
+  "/payments",
+  "/accounts",
+  "/customers",
+  "/suppliers",
+  "/workers",
+  "/users",
+  "/alerts",
+  "/settings",
+] as const;
+
 export function pickDefaultRoute(perms: Set<PermissionId>): string {
-  if (perms.has("*") || perms.has("dashboard")) return "/";
-  if (perms.has("transactions.sales")) return "/orders";
-  if (perms.has("inventory.items")) return "/inventory";
-  if (perms.has("accounts.ledger")) return "/ledger";
-  if (perms.has("reports")) return "/reports";
-  if (perms.has("settings")) return "/settings";
-  return "/";
+  for (const route of DEFAULT_ROUTE_CANDIDATES) {
+    if (canAccessPath(perms, route)) return route;
+  }
+  return "/no-access";
 }
 
