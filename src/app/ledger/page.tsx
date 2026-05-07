@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, Plus, Search, Trash2, ArrowRight } from "lucide-react";
+import { BookOpenText, Plus, Trash2, ArrowRight, Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
@@ -65,6 +65,34 @@ export default function LedgerPage() {
         );
       }
       await db.ledgerAccounts.delete(accountId);
+    });
+  };
+
+  const renameAccount = async (accountId: number) => {
+    const acct = await db.ledgerAccounts.get(accountId);
+    if (!acct?.id) return;
+    if (acct.name === CASH_LEDGER_NAME) return alert("This is the system cash ledger and cannot be renamed.");
+    const next = window.prompt("Rename ledger account", acct.name)?.trim();
+    if (!next) return;
+    if (next === acct.name) return;
+    const ok = await requirePasswordConfirm({
+      title: "Rename ledger account",
+      message: `Rename "${acct.name}" → "${next}"?`,
+    });
+    if (!ok) return;
+
+    await db.transaction("rw", db.tables, async () => {
+      const uid = acct.uid ?? newUid();
+      if (!acct.uid) await db.ledgerAccounts.update(accountId, { uid });
+      await db.ledgerAccounts.update(accountId, { name: next });
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "ledger.account",
+          entityId: uid,
+          op: "update",
+          payload: { id: accountId, account: { ...acct, uid, name: next } },
+        })
+      );
     });
   };
 
@@ -188,26 +216,42 @@ export default function LedgerPage() {
                   </div>
 
                   {typeof account.id === "number" ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        void deleteAccount(account.id!);
-                      }}
-                      disabled={account.name === CASH_LEDGER_NAME || entries.some((x) => x.accountId === account.id)}
-                      title={
-                        account.name === CASH_LEDGER_NAME
-                          ? "System cash ledger"
-                          : entries.some((x) => x.accountId === account.id)
-                            ? "Cannot delete: has entries"
-                            : "Delete account"
-                      }
-                      className="shrink-0 p-2 rounded-md text-slate-500 hover:bg-slate-50 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500"
-                      aria-label="Delete account"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="shrink-0 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void renameAccount(account.id!);
+                        }}
+                        disabled={account.name === CASH_LEDGER_NAME}
+                        title={account.name === CASH_LEDGER_NAME ? "System cash ledger" : "Rename account"}
+                        className="p-2 rounded-md text-slate-500 hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500"
+                        aria-label="Rename account"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void deleteAccount(account.id!);
+                        }}
+                        disabled={account.name === CASH_LEDGER_NAME || entries.some((x) => x.accountId === account.id)}
+                        title={
+                          account.name === CASH_LEDGER_NAME
+                            ? "System cash ledger"
+                            : entries.some((x) => x.accountId === account.id)
+                              ? "Cannot delete: has entries"
+                              : "Delete account"
+                        }
+                        className="p-2 rounded-md text-slate-500 hover:bg-slate-50 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500"
+                        aria-label="Delete account"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               </div>

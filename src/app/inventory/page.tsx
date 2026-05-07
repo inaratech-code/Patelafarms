@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PackagePlus, Trash2, ShoppingCart, AlertTriangle, Soup } from "lucide-react";
+import { PackagePlus, Trash2, ShoppingCart, AlertTriangle, Soup, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type ItemTypeErp } from "@/lib/db";
@@ -96,6 +96,33 @@ export default function InventoryPage() {
 
   const actionClass =
     "inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50";
+
+  const renameItem = async (itemId: number) => {
+    const item = await db.inventory.get(itemId);
+    if (!item?.id) return;
+    const next = window.prompt("Rename item", item.name)?.trim();
+    if (!next) return;
+    if (next === item.name) return;
+    const ok = await requirePasswordConfirm({
+      title: "Rename item",
+      message: `Rename "${item.name}" → "${next}"?`,
+    });
+    if (!ok) return;
+
+    await db.transaction("rw", db.tables, async () => {
+      const uid = item.uid ?? newUid();
+      if (!item.uid) await db.inventory.update(itemId, { uid });
+      await db.inventory.update(itemId, { name: next });
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "inventory.item",
+          entityId: uid,
+          op: "update",
+          payload: { id: itemId, item: { ...item, uid, name: next } },
+        })
+      );
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -294,6 +321,17 @@ export default function InventoryPage() {
 
                 <footer className="mt-auto border-t border-slate-100 pt-4">
                   <div className="flex flex-wrap gap-1.5">
+                    {item.id ? (
+                      <button
+                        type="button"
+                        title="Rename item"
+                        onClick={() => void renameItem(item.id!)}
+                        className={actionClass}
+                      >
+                        <Pencil className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                        Rename
+                      </button>
+                    ) : null}
                     {isSellable(item) && item.id ? (
                       <Link href={`/orders?tab=Sales&itemId=${item.id}`} className={actionClass}>
                         <ShoppingCart className="w-3.5 h-3.5 shrink-0" aria-hidden />

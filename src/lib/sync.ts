@@ -370,6 +370,19 @@ export async function applyEvents(events: SyncEvent[]) {
           if (!found) await db.inventory.add(item as unknown as Omit<InventoryItem, "id">);
         }
       }
+      if (e.entityType === "inventory.item" && e.op === "update") {
+        const item = asRecord(payload?.item);
+        const uid = item ? asString(item.uid) : undefined;
+        if (uid && item) {
+          const found = await db.inventory.where("uid").equals(uid).first();
+          if (!found) await db.inventory.add(item as unknown as Omit<InventoryItem, "id">);
+          else if (typeof found.id === "number") {
+            const next: AnyRecord = { ...item };
+            delete next.id;
+            await db.inventory.update(found.id, next as unknown as Partial<InventoryItem>);
+          }
+        }
+      }
       if (e.entityType === "daybook.entry" && e.op === "create") {
         const entry = asRecord(payload?.entry);
         const uid = entry ? asString(entry.uid) : undefined;
@@ -434,6 +447,19 @@ export async function applyEvents(events: SyncEvent[]) {
         if (uid) {
           const found = await db.ledgerAccounts.where("uid").equals(uid).first();
           if (!found) await db.ledgerAccounts.add(account as unknown as Omit<LedgerAccount, "id">);
+        }
+      }
+      if (e.entityType === "ledger.account" && e.op === "update") {
+        const account = asRecord(payload?.account);
+        const uid = account ? asString(account.uid) : undefined;
+        if (uid && account) {
+          const found = await db.ledgerAccounts.where("uid").equals(uid).first();
+          if (!found) await db.ledgerAccounts.add(account as unknown as Omit<LedgerAccount, "id">);
+          else if (typeof found.id === "number") {
+            const next: AnyRecord = { ...account };
+            delete next.id;
+            await db.ledgerAccounts.update(found.id, next as unknown as Partial<LedgerAccount>);
+          }
         }
       }
       if (e.entityType === "ledger.account" && e.op === "delete") {
