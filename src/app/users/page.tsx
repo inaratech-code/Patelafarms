@@ -9,6 +9,7 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
+import { isPasswordPwned } from "@/lib/pwnedPasswords";
 
 type PermissionId =
   | "dashboard"
@@ -195,9 +196,15 @@ export default function UsersPage() {
     e.preventDefault();
     if (!userForm.username.trim()) return;
     if (!userForm.roleId) return;
-    if (userForm.password.length < 4 || userForm.password.length > 20) return;
+    if (userForm.password.length < 12 || userForm.password.length > 64) return;
     if (userForm.password !== userForm.confirmPassword) return;
     if (isAdminRole && !userForm.email.trim()) return;
+
+    // Best-effort check (offline allowed). If pwned, block creation.
+    if (await isPasswordPwned(userForm.password)) {
+      alert("That password was found in a data breach. Choose a different password.");
+      return;
+    }
 
     const passwordHash = await sha256Base64(userForm.password);
     const userUid =
@@ -503,11 +510,11 @@ export default function UsersPage() {
                     <input
                       type={showUserPassword.password ? "text" : "password"}
                       className="w-full rounded-md border border-slate-200 bg-white pl-3 pr-11 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                      placeholder="4-20 characters"
+                      placeholder="12-64 characters"
                       value={userForm.password}
                       onChange={(e) => setUserForm((v) => ({ ...v, password: e.target.value }))}
-                      minLength={4}
-                      maxLength={20}
+                      minLength={12}
+                      maxLength={64}
                       required
                       autoComplete="new-password"
                     />
@@ -520,7 +527,7 @@ export default function UsersPage() {
                       {showUserPassword.password ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.password.length, 20)}/20</div>
+                  <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.password.length, 64)}/64</div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Confirm Password *</label>
@@ -531,8 +538,8 @@ export default function UsersPage() {
                       placeholder="Re-enter password"
                       value={userForm.confirmPassword}
                       onChange={(e) => setUserForm((v) => ({ ...v, confirmPassword: e.target.value }))}
-                      minLength={4}
-                      maxLength={20}
+                      minLength={12}
+                      maxLength={64}
                       required
                       autoComplete="new-password"
                     />
@@ -545,7 +552,7 @@ export default function UsersPage() {
                       {showUserPassword.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.confirmPassword.length, 20)}/20</div>
+                  <div className="mt-1 text-xs text-slate-500">{Math.min(userForm.confirmPassword.length, 64)}/64</div>
                 </div>
               </div>
 
@@ -563,8 +570,8 @@ export default function UsersPage() {
                   disabled={
                     !userForm.username.trim() ||
                     !userForm.roleId ||
-                    userForm.password.length < 4 ||
-                    userForm.password.length > 20 ||
+                    userForm.password.length < 12 ||
+                    userForm.password.length > 64 ||
                     userForm.password !== userForm.confirmPassword ||
                     (isAdminRole && !userForm.email.trim())
                   }

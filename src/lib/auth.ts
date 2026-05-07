@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { enqueueUserRecordOutbox } from "@/lib/sync";
 import { ensureFarm, publishFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
+import { isPasswordPwned } from "@/lib/pwnedPasswords";
 
 export const SESSION_KEY = "pf.session.v1";
 
@@ -39,13 +40,24 @@ export function clearSession() {
 }
 
 export async function sha256Base64(input: string) {
-  if (!globalThis.crypto?.subtle) return btoa(unescape(encodeURIComponent(input))); // fallback (not secure)
+  if (!globalThis.crypto?.subtle) throw new Error("Secure crypto unavailable in this browser.");
   const enc = new TextEncoder().encode(input);
   const hash = await crypto.subtle.digest("SHA-256", enc);
   const bytes = new Uint8Array(hash);
   let bin = "";
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
+}
+
+async function validateNewPasswordOrThrow(newPassword: string) {
+  const pwd = newPassword ?? "";
+  // Keep max short to match existing UI and avoid accidental clipboard disasters.
+  if (pwd.length < 12 || pwd.length > 64) {
+    throw new Error("New password must be between 12 and 64 characters");
+  }
+  if (await isPasswordPwned(pwd)) {
+    throw new Error("That password was found in a data breach. Choose a different password.");
+  }
 }
 
 async function findLocalUserByUsername(usernameTrimmed: string) {
@@ -89,9 +101,7 @@ export async function changePassword(params: {
   newPassword: string;
 }) {
   const { userId, currentPassword, newPassword } = params;
-  if (newPassword.length < 4 || newPassword.length > 20) {
-    throw new Error("New password must be between 4 and 20 characters");
-  }
+  await validateNewPasswordOrThrow(newPassword);
   const user = await db.users.get(userId);
   if (!user?.id) throw new Error("User not found");
   if (!user.passwordHash) throw new Error("This account has no password set");
