@@ -10,7 +10,13 @@ export function ServiceWorkerRegistration() {
 
     const register = async () => {
       try {
-        const reg = await navigator.serviceWorker.register("/sw.js");
+        // Prefer the conventional path PWABuilder looks for.
+        let reg: ServiceWorkerRegistration;
+        try {
+          reg = await navigator.serviceWorker.register("/service-worker.js");
+        } catch {
+          reg = await navigator.serviceWorker.register("/sw.js");
+        }
 
         // Auto-update: check for new SW periodically and reload when it takes control.
         const doUpdate = async () => {

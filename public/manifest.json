@@ -50,7 +50,6 @@
       "url": "url"
     }
   },
-  "iarc_rating_id": "",
   "edge_side_panel": {
     "preferred_width": 480
   },
@@ -72,15 +71,14 @@
       "url": "/protocol?url=%s"
     }
   ],
-  "scope_extensions": [],
   "widgets": [
     {
       "name": "Patela Farm quick view",
       "short_name": "Patela Farm",
       "description": "Quick links into Patela Farm Management.",
       "tag": "patela-quick",
-      "ms_ac_template": "/widgets/patela-quick-template.json",
-      "data": "/widgets/patela-quick-data.json",
+      "ms_ac_template": "widgets/patela-quick-template.json",
+      "data": "widgets/patela-quick-data.json",
       "type": "application/json",
       "screenshots": [
         {
