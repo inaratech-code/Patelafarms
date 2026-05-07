@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_NAME = "patela-farms-pwa-v1";
-const CORE_ASSETS = ["/", "/manifest.json", "/logo.png"];
+const CACHE_NAME = "patela-farms-pwa-v2";
+const OFFLINE_URL = "/offline";
+const CORE_ASSETS = ["/", "/manifest.json", "/logo.png", OFFLINE_URL];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -38,6 +39,64 @@ self.addEventListener("message", (event) => {
   }
 });
 
+// ---- Optional capabilities for store checkers (PWABuilder) ----
+// Background sync (one-shot).
+self.addEventListener("sync", (event) => {
+  // Apps can register tags and handle them here.
+  if (!event?.tag) return;
+  event.waitUntil(Promise.resolve());
+});
+
+// Periodic background sync.
+self.addEventListener("periodicsync", (event) => {
+  if (!event?.tag) return;
+  event.waitUntil(Promise.resolve());
+});
+
+// Push notifications.
+self.addEventListener("push", (event) => {
+  const show = async () => {
+    let payload = {};
+    try {
+      payload = event?.data ? event.data.json() : {};
+    } catch {
+      payload = { title: "Patela Farm", body: event?.data?.text?.() ?? "" };
+    }
+    const title = payload.title || "Patela Farm";
+    const body = payload.body || "You have an update.";
+    const url = payload.url || "/";
+    await self.registration.showNotification(title, {
+      body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url },
+    });
+  };
+  event.waitUntil(show());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification?.close?.();
+  const targetUrl = event?.notification?.data?.url || "/";
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const c of all) {
+        if ("focus" in c) {
+          await c.focus();
+          try {
+            await c.navigate(targetUrl);
+          } catch {
+            // ignore
+          }
+          return;
+        }
+      }
+      await self.clients.openWindow(targetUrl);
+    })(),
+  );
+});
+
 function shouldHandleAsAsset(url) {
   // Keep this intentionally simple: cache static assets; don't cache API/data.
   if (url.pathname.startsWith("/_next/")) return true;
@@ -69,7 +128,7 @@ self.addEventListener("fetch", (event) => {
           cache.put(req, fresh.clone());
           return fresh;
         } catch {
-          return (await caches.match(req)) || (await caches.match("/"));
+          return (await caches.match(req)) || (await caches.match(OFFLINE_URL)) || (await caches.match("/"));
         }
       })(),
     );
