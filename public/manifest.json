@@ -14,7 +14,13 @@
   "background_color": "#ffffff",
   "theme_color": "#0871b3",
   "prefer_related_applications": false,
-  "related_applications": [],
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "/",
+      "id": "patela-farms"
+    }
+  ],
   "launch_handler": {
     "client_mode": "navigate-existing"
   },
@@ -51,10 +57,44 @@
   "note_taking": {
     "new_note_url": "/"
   },
-  "file_handlers": [],
-  "protocol_handlers": [],
+  "file_handlers": [
+    {
+      "action": "/file-handler",
+      "accept": {
+        "text/csv": [".csv"],
+        "application/json": [".json"]
+      }
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+patelafarm",
+      "url": "/protocol?url=%s"
+    }
+  ],
   "scope_extensions": [],
-  "widgets": [],
+  "widgets": [
+    {
+      "name": "Patela Farm quick view",
+      "short_name": "Patela Farm",
+      "description": "Quick links into Patela Farm Management.",
+      "tag": "patela-quick",
+      "ms_ac_template": "/widgets/patela-quick-template.json",
+      "data": "/widgets/patela-quick-data.json",
+      "type": "application/json",
+      "screenshots": [
+        {
+          "src": "/screenshots/narrow.png",
+          "sizes": "540x720",
+          "label": "Patela Farm widget",
+          "platform": "Windows"
+        }
+      ],
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }],
+      "auth": false,
+      "update": 86400
+    }
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",

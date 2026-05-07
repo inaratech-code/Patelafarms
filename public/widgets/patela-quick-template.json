@@ -1,0 +1,42 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "Patela Farm",
+      "weight": "Bolder",
+      "size": "Medium",
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "Quick links",
+      "isSubtle": true,
+      "spacing": "Small",
+      "wrap": true
+    },
+    {
+      "type": "ActionSet",
+      "actions": [
+        {
+          "type": "Action.OpenUrl",
+          "title": "Open Dashboard",
+          "url": "${dashboardUrl}"
+        },
+        {
+          "type": "Action.OpenUrl",
+          "title": "Inventory",
+          "url": "${inventoryUrl}"
+        },
+        {
+          "type": "Action.OpenUrl",
+          "title": "Ledger",
+          "url": "${ledgerUrl}"
+        }
+      ]
+    }
+  ]
+}
+
