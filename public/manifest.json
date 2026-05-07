@@ -44,6 +44,13 @@
       "url": "url"
     }
   },
+  "iarc_rating_id": "",
+  "edge_side_panel": {
+    "preferred_width": 480
+  },
+  "note_taking": {
+    "new_note_url": "/"
+  },
   "file_handlers": [],
   "protocol_handlers": [],
   "scope_extensions": [],
