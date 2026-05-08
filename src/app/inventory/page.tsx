@@ -118,7 +118,7 @@ export default function InventoryPage() {
           entityType: "inventory.item",
           entityId: uid,
           op: "update",
-          payload: { id: itemId, item: { ...item, uid, name: next } },
+          payload: { id: itemId, item: { uid, name: next } },
         })
       );
     });
