@@ -373,13 +373,21 @@ export async function applyEvents(events: SyncEvent[]) {
       if (e.entityType === "inventory.item" && e.op === "update") {
         const item = asRecord(payload?.item);
         const uid = item ? asString(item.uid) : undefined;
+        const name = item ? asString(item.name) : undefined;
         if (uid && item) {
           const found = await db.inventory.where("uid").equals(uid).first();
-          if (!found) await db.inventory.add(item as unknown as Omit<InventoryItem, "id">);
-          else if (typeof found.id === "number") {
+          if (!found) {
             const next: AnyRecord = { ...item };
             delete next.id;
-            await db.inventory.update(found.id, next as unknown as Partial<InventoryItem>);
+            if (typeof next.quantity === "number" && typeof next.unit === "string") {
+              await db.inventory.add(next as unknown as Omit<InventoryItem, "id">);
+            }
+          } else if (typeof found.id === "number") {
+            // Inventory updates currently represent item-master edits (rename), not stock adjustments.
+            // Preserve quantity/cost fields because sales, purchases, and losses sync as deltas.
+            const next: Partial<InventoryItem> = {};
+            if (name) next.name = name;
+            if (Object.keys(next).length) await db.inventory.update(found.id, next);
           }
         }
       }
