@@ -369,7 +369,19 @@ export default function InventoryPage() {
                           message: `Delete item "${item.name}"?`,
                         });
                         if (!ok) return;
-                        await db.inventory.delete(item.id!);
+                        await db.transaction("rw", db.tables, async () => {
+                          const uid = item.uid ?? newUid();
+                          if (!item.uid) await db.inventory.update(item.id!, { uid });
+                          await db.outbox.add(
+                            makeSyncEvent({
+                              entityType: "inventory.item",
+                              entityId: uid,
+                              op: "delete",
+                              payload: { uid },
+                            })
+                          );
+                          await db.inventory.delete(item.id!);
+                        });
                       }}
                       className="ml-auto inline-flex items-center justify-center rounded-md border border-transparent p-2 text-alert-red hover:bg-red-50"
                     >

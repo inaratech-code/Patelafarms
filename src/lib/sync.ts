@@ -383,6 +383,10 @@ export async function applyEvents(events: SyncEvent[]) {
           }
         }
       }
+      if (e.entityType === "inventory.item" && e.op === "delete") {
+        const uid = asString(payload?.uid) ?? e.entityId;
+        if (uid) await db.inventory.where("uid").equals(uid).delete();
+      }
       if (e.entityType === "daybook.entry" && e.op === "create") {
         const entry = asRecord(payload?.entry);
         const uid = entry ? asString(entry.uid) : undefined;
