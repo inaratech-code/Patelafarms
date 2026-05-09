@@ -587,9 +587,9 @@ export async function applyEvents(events: SyncEvent[]) {
                 const existingDayBook = await db.dayBook.where("uid").equals(dayBookUid).first();
                 if (!existingDayBook) {
                   const accountId = await ensureFinancialAccountIdByUid(payload?.account);
-                  const reason = asString(loss.reason);
-                  const lossType = asString(loss.lossType) ?? "Loss";
-                  const unit = asString(loss.unit) ?? inv.unit;
+                  const reason = asString(loss?.reason);
+                  const lossType = asString(loss?.lossType) ?? "Loss";
+                  const unit = asString(loss?.unit) ?? inv.unit;
                   const dayBookRow: AnyRecord = {
                     uid: dayBookUid,
                     time: date,
