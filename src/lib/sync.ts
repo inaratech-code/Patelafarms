@@ -2,8 +2,10 @@
 
 import {
   db,
+  type ConsumptionLog,
   type DayBookEntry,
   type FinancialAccount,
+  type InventoryLoss,
   type InventoryItem,
   type LedgerAccount,
   type Payment,
@@ -354,6 +356,13 @@ export async function applyEvents(events: SyncEvent[]) {
         });
       };
 
+      const applyInventoryDeltaByUid = async (itemUid: string, delta: number) => {
+        const inv = await db.inventory.where("uid").equals(itemUid).first();
+        if (typeof inv?.id !== "number") return undefined;
+        await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
+        return inv;
+      };
+
       // Apply minimal event types we currently emit.
       const payload = asRecord(e.payload);
       if (e.entityType === "farm.reset" && e.op === "create") {
@@ -476,6 +485,126 @@ export async function applyEvents(events: SyncEvent[]) {
         if (uid) {
           const found = await db.stockMovement.where("uid").equals(uid).first();
           if (!found) await db.stockMovement.add(movement as unknown as Omit<StockMovement, "id">);
+        }
+      }
+      if (e.entityType === "inventory.consumption" && e.op === "create") {
+        const log = asRecord(payload?.log);
+        const uid = log ? asString(log.uid) : undefined;
+        const itemUid = log ? asString(log.itemUid) : undefined;
+        const qty = log ? asNumber(log.quantity) : undefined;
+        const cost = log ? asNumber(log.cost) : undefined;
+        const date = log ? asString(log.date) : undefined;
+        if (uid && itemUid && typeof qty === "number" && qty > 0 && date) {
+          const found = await db.consumptionLogs.where("uid").equals(uid).first();
+          if (!found) {
+            const inv = await applyInventoryDeltaByUid(itemUid, -qty);
+            if (typeof inv?.id === "number") {
+              const categoryRaw = asString(log?.category);
+              const category =
+                categoryRaw === "feed_used" || categoryRaw === "farm_use" || categoryRaw === "spoilage"
+                  ? categoryRaw
+                  : "farm_use";
+              const logRow: AnyRecord = { ...log, itemId: inv.id, category };
+              delete logRow.id;
+              delete logRow.itemUid;
+              await db.consumptionLogs.add(logRow as unknown as Omit<ConsumptionLog, "id">);
+
+              const movement = asRecord(payload?.movement);
+              const movementUid = movement ? asString(movement.uid) : undefined;
+              if (movementUid) {
+                const existingMovement = await db.stockMovement.where("uid").equals(movementUid).first();
+                if (!existingMovement) {
+                  await db.stockMovement.add({
+                    uid: movementUid,
+                    itemId: inv.id,
+                    quantity: qty,
+                    type: "OUT",
+                    reason: "Usage",
+                    date,
+                  } satisfies Omit<StockMovement, "id">);
+                }
+              }
+
+              const dayBookUid = asString(payload?.dayBookUid);
+              if (dayBookUid) {
+                const existingDayBook = await db.dayBook.where("uid").equals(dayBookUid).first();
+                if (!existingDayBook) {
+                  const accountId = await ensureFinancialAccountIdByUid(payload?.account);
+                  const dayBookRow: AnyRecord = {
+                    uid: dayBookUid,
+                    time: date,
+                    type: "Expense",
+                    category: "Other",
+                    amount: cost ?? 0,
+                    description: `Consumption (${category}): ${qty} ${inv.unit} ${inv.name}`,
+                    method: "Cash",
+                    refType: "consumption",
+                    refId: uid,
+                  };
+                  if (typeof accountId === "number") dayBookRow.accountId = accountId;
+                  await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
+                }
+              }
+            }
+          }
+        }
+      }
+      if (e.entityType === "inventory.loss" && e.op === "create") {
+        const loss = asRecord(payload?.loss);
+        const uid = loss ? asString(loss.uid) : undefined;
+        const itemUid = loss ? asString(loss.itemUid) : undefined;
+        const qty = loss ? asNumber(loss.quantity) : undefined;
+        const estimatedCost = loss ? asNumber(loss.estimatedCost) : undefined;
+        const date = loss ? asString(loss.date) : undefined;
+        if (uid && itemUid && typeof qty === "number" && qty > 0 && date) {
+          const found = await db.inventoryLosses.where("uid").equals(uid).first();
+          if (!found) {
+            const inv = await applyInventoryDeltaByUid(itemUid, -qty);
+            if (typeof inv?.id === "number") {
+              const lossRow: AnyRecord = { ...loss, itemId: inv.id };
+              delete lossRow.id;
+              delete lossRow.itemUid;
+              await db.inventoryLosses.add(lossRow as unknown as Omit<InventoryLoss, "id">);
+
+              const movement = asRecord(payload?.movement);
+              const movementUid = movement ? asString(movement.uid) : undefined;
+              if (movementUid) {
+                const existingMovement = await db.stockMovement.where("uid").equals(movementUid).first();
+                if (!existingMovement) {
+                  await db.stockMovement.add({
+                    uid: movementUid,
+                    itemId: inv.id,
+                    quantity: qty,
+                    type: "OUT",
+                    reason: "Loss",
+                    date,
+                  } satisfies Omit<StockMovement, "id">);
+                }
+              }
+
+              const dayBookUid = asString(payload?.dayBookUid);
+              if (dayBookUid) {
+                const existingDayBook = await db.dayBook.where("uid").equals(dayBookUid).first();
+                if (!existingDayBook) {
+                  const accountId = await ensureFinancialAccountIdByUid(payload?.account);
+                  const reason = asString(loss.reason);
+                  const lossType = asString(loss.lossType) ?? "Loss";
+                  const unit = asString(loss.unit) ?? inv.unit;
+                  const dayBookRow: AnyRecord = {
+                    uid: dayBookUid,
+                    time: date,
+                    type: "Expense",
+                    category: "Other",
+                    amount: estimatedCost ?? 0,
+                    description: `Inventory loss (${lossType}): ${qty} ${unit} ${inv.name}${reason ? ` - ${reason}` : ""}`,
+                    method: "Cash",
+                  };
+                  if (typeof accountId === "number") dayBookRow.accountId = accountId;
+                  await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
+                }
+              }
+            }
+          }
         }
       }
       if (e.entityType === "order.sale" && e.op === "create") {
