@@ -38,6 +38,7 @@ function asNumber(v: unknown): number | undefined {
 }
 
 const ROLE_USER_OUTBOX_BACKFILL = "pf.roleUserOutboxV1";
+const PULL_PAGE_SIZE = 500;
 
 async function upsertRoleFromSyncPayload(roleRaw: unknown) {
   const r = asRecord(roleRaw);
@@ -265,19 +266,47 @@ export async function pullEvents() {
   const farmId = await ensureFarm();
   const state = getSyncState();
   const since = state.lastPulledAt;
+  const cursorId = state.lastPulledEventId;
 
-  let query = supabase.from("events").select("*").eq("farm_id", farmId).order("created_at", { ascending: true }).limit(500);
-  if (since) query = query.gt("created_at", since);
+  const eventsQuery = (limit: number) =>
+    supabase
+      .from("events")
+      .select("*")
+      .eq("farm_id", farmId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(limit);
 
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = (data ?? []).map(fromSupabaseRow);
+  let data: unknown[] = [];
+
+  if (since && cursorId) {
+    const sameTimestamp = await eventsQuery(PULL_PAGE_SIZE).eq("created_at", since).gt("id", cursorId);
+    if (sameTimestamp.error) throw sameTimestamp.error;
+    data = sameTimestamp.data ?? [];
+
+    if (data.length < PULL_PAGE_SIZE) {
+      const later = await eventsQuery(PULL_PAGE_SIZE - data.length).gt("created_at", since);
+      if (later.error) throw later.error;
+      data = [...data, ...(later.data ?? [])];
+    }
+  } else {
+    let query = eventsQuery(PULL_PAGE_SIZE);
+    // Existing clients only stored a timestamp. Re-read that timestamp once so
+    // already-applied rows can be skipped and any tied rows can still be reached.
+    if (since) query = query.gte("created_at", since);
+
+    const page = await query;
+    if (page.error) throw page.error;
+    data = page.data ?? [];
+  }
+
+  const rows = data.map(fromSupabaseRow);
   if (rows.length === 0) return { pulled: 0 };
 
   await applyEvents(rows);
 
-  const last = rows[rows.length - 1].createdAt;
-  setSyncState({ lastPulledAt: last });
+  const last = rows[rows.length - 1];
+  setSyncState({ lastPulledAt: last.createdAt, lastPulledEventId: last.id });
 
   return { pulled: rows.length };
 }
