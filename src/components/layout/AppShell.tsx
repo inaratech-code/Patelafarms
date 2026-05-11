@@ -21,6 +21,7 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
+  const roleLookupPending = Boolean(session?.roleId && role === undefined);
 
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
@@ -100,12 +101,17 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
     // Wait until the role record is loaded; otherwise we can get a redirect loop on first render.
-    if (session?.roleId && role == null) return;
+    if (roleLookupPending) return;
+    if (session?.roleId && role === null) {
+      clearSession();
+      window.location.replace("/login");
+      return;
+    }
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     if (!canAccessPath(perms, pathname || "/")) {
       window.location.replace(pickDefaultRoute(perms));
     }
-  }, [isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
+  }, [isBootstrapAllowed, isLoginRoute, pathname, role, roleLookupPending, session?.roleId, session?.userId]);
 
   useEffect(() => {
     if (isLoginRoute) return;
