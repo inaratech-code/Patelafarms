@@ -2,8 +2,10 @@
 
 import {
   db,
+  type ConsumptionLog,
   type DayBookEntry,
   type FinancialAccount,
+  type InventoryLoss,
   type InventoryItem,
   type LedgerAccount,
   type Payment,
@@ -38,6 +40,32 @@ function asNumber(v: unknown): number | undefined {
 }
 
 const ROLE_USER_OUTBOX_BACKFILL = "pf.roleUserOutboxV1";
+const STOCK_MOVEMENT_REASONS = new Set<StockMovement["reason"]>([
+  "Harvest",
+  "Purchase",
+  "Sale",
+  "Usage",
+  "Damage",
+  "Loss",
+]);
+
+function normalizeStockMovementReason(value: unknown, fallback: StockMovement["reason"]): StockMovement["reason"] {
+  return typeof value === "string" && STOCK_MOVEMENT_REASONS.has(value as StockMovement["reason"])
+    ? (value as StockMovement["reason"])
+    : fallback;
+}
+
+function movementTypeFromDelta(delta: number): StockMovement["type"] {
+  return delta >= 0 ? "IN" : "OUT";
+}
+
+function omitSyncOnlyFields(row: AnyRecord) {
+  const next: AnyRecord = { ...row };
+  delete next.id;
+  delete next.itemUid;
+  delete next.delta;
+  return next;
+}
 
 async function upsertRoleFromSyncPayload(roleRaw: unknown) {
   const r = asRecord(roleRaw);
@@ -354,6 +382,50 @@ export async function applyEvents(events: SyncEvent[]) {
         });
       };
 
+      const applyStockMovementWithInventoryDelta = async (params: {
+        movement: unknown;
+        itemUid?: string;
+        delta?: number;
+        fallbackDate?: string;
+        fallbackReason: StockMovement["reason"];
+      }) => {
+        const movement = asRecord(params.movement);
+        const uid = movement ? asString(movement.uid) : undefined;
+        const itemUid = params.itemUid ?? (movement ? asString(movement.itemUid) : undefined);
+        if (!uid || !itemUid) return;
+
+        const item = await db.inventory.where("uid").equals(itemUid).first();
+        if (typeof item?.id !== "number") return;
+
+        const found = await db.stockMovement.where("uid").equals(uid).first();
+        if (found) return;
+
+        const explicitDelta = params.delta ?? (movement ? asNumber(movement.delta) : undefined);
+        const movementQuantity = movement ? asNumber(movement.quantity) : undefined;
+        const quantity = movementQuantity ?? (typeof explicitDelta === "number" ? Math.abs(explicitDelta) : undefined);
+        if (typeof quantity !== "number" || quantity <= 0) return;
+
+        const rawType = movement ? movement.type : undefined;
+        const type =
+          rawType === "IN" || rawType === "OUT"
+            ? rawType
+            : movementTypeFromDelta(typeof explicitDelta === "number" ? explicitDelta : quantity);
+        const delta = typeof explicitDelta === "number" ? explicitDelta : type === "IN" ? quantity : -quantity;
+
+        const row: Omit<StockMovement, "id"> = {
+          ...omitSyncOnlyFields(movement ?? {}),
+          uid,
+          itemId: item.id,
+          quantity,
+          type,
+          reason: normalizeStockMovementReason(movement?.reason, params.fallbackReason),
+          date: asString(movement?.date) ?? params.fallbackDate ?? new Date().toISOString(),
+        } as Omit<StockMovement, "id">;
+
+        await db.stockMovement.add(row);
+        await db.inventory.update(item.id, { quantity: (item.quantity ?? 0) + delta });
+      };
+
       // Apply minimal event types we currently emit.
       const payload = asRecord(e.payload);
       if (e.entityType === "farm.reset" && e.op === "create") {
@@ -472,10 +544,126 @@ export async function applyEvents(events: SyncEvent[]) {
       }
       if (e.entityType === "stock.movement" && e.op === "create") {
         const movement = asRecord(payload?.movement);
-        const uid = movement ? asString(movement.uid) : undefined;
-        if (uid) {
-          const found = await db.stockMovement.where("uid").equals(uid).first();
-          if (!found) await db.stockMovement.add(movement as unknown as Omit<StockMovement, "id">);
+        const itemUid = asString(payload?.itemUid) ?? (movement ? asString(movement.itemUid) : undefined);
+        const inventoryDelta = asRecord(payload?.inventoryDelta);
+        await applyStockMovementWithInventoryDelta({
+          movement,
+          itemUid: itemUid ?? asString(inventoryDelta?.itemUid),
+          delta: inventoryDelta ? asNumber(inventoryDelta.delta) : undefined,
+          fallbackDate: e.createdAt,
+          fallbackReason: "Usage",
+        });
+      }
+      if (e.entityType === "inventory.consumption" && e.op === "create") {
+        const log = asRecord(payload?.log);
+        const uid = log ? asString(log.uid) : undefined;
+        const itemUid = log ? asString(log.itemUid) : undefined;
+        if (uid && log && itemUid) {
+          const found = await db.consumptionLogs.where("uid").equals(uid).first();
+          const item = await db.inventory.where("uid").equals(itemUid).first();
+          if (!found && typeof item?.id === "number") {
+            const logRow: Omit<ConsumptionLog, "id"> = {
+              ...omitSyncOnlyFields(log),
+              uid,
+              itemId: item.id,
+              quantity: Number(log.quantity ?? 0) || 0,
+              cost: Number(log.cost ?? 0) || 0,
+              category:
+                log.category === "farm_use" || log.category === "spoilage"
+                  ? (log.category as ConsumptionLog["category"])
+                  : "feed_used",
+              date: String(log.date ?? e.createdAt),
+            } as Omit<ConsumptionLog, "id">;
+            await db.consumptionLogs.add(logRow);
+
+            const movement = asRecord(payload?.movement);
+            await applyStockMovementWithInventoryDelta({
+              movement,
+              itemUid,
+              delta: movement ? asNumber(movement.delta) : -logRow.quantity,
+              fallbackDate: logRow.date,
+              fallbackReason: "Usage",
+            });
+
+            const dayBookUid = asString(payload?.dayBookUid);
+            if (dayBookUid) {
+              const existingDayBook = await db.dayBook.where("uid").equals(dayBookUid).first();
+              if (!existingDayBook) {
+                const accountId = await ensureFinancialAccountIdByUid(payload?.account);
+                const dayBookRow: Omit<DayBookEntry, "id"> = {
+                  uid: dayBookUid,
+                  time: logRow.date,
+                  type: "Expense",
+                  category: "Other",
+                  amount: logRow.cost,
+                  description: `Consumption (${logRow.category}): ${logRow.quantity} ${item.unit} ${item.name}`,
+                  method: "Cash",
+                  accountId,
+                  refType: "consumption",
+                  refId: uid,
+                };
+                await db.dayBook.add(dayBookRow);
+              }
+            }
+          }
+        }
+      }
+      if (e.entityType === "inventory.loss" && e.op === "create") {
+        const loss = asRecord(payload?.loss);
+        const uid = loss ? asString(loss.uid) : undefined;
+        const itemUid = loss ? asString(loss.itemUid) : undefined;
+        if (uid && loss && itemUid) {
+          const found = await db.inventoryLosses.where("uid").equals(uid).first();
+          const item = await db.inventory.where("uid").equals(itemUid).first();
+          if (!found && typeof item?.id === "number") {
+            const lossRow: Omit<InventoryLoss, "id"> = {
+              ...omitSyncOnlyFields(loss),
+              uid,
+              itemId: item.id,
+              lossType:
+                loss.lossType === "Damaged" ||
+                loss.lossType === "Spoiled" ||
+                loss.lossType === "Missing" ||
+                loss.lossType === "Theft" ||
+                loss.lossType === "Wastage"
+                  ? (loss.lossType as InventoryLoss["lossType"])
+                  : "Dead",
+              quantity: Number(loss.quantity ?? 0) || 0,
+              unit: String(loss.unit ?? item.unit),
+              estimatedCost: Number(loss.estimatedCost ?? 0) || 0,
+              date: String(loss.date ?? e.createdAt),
+            } as Omit<InventoryLoss, "id">;
+            await db.inventoryLosses.add(lossRow);
+
+            const movement = asRecord(payload?.movement);
+            await applyStockMovementWithInventoryDelta({
+              movement,
+              itemUid,
+              delta: movement ? asNumber(movement.delta) : -lossRow.quantity,
+              fallbackDate: lossRow.date,
+              fallbackReason: "Loss",
+            });
+
+            const dayBookUid = asString(payload?.dayBookUid);
+            if (dayBookUid) {
+              const existingDayBook = await db.dayBook.where("uid").equals(dayBookUid).first();
+              if (!existingDayBook) {
+                const accountId = await ensureFinancialAccountIdByUid(payload?.account);
+                const reasonText = asString(loss.reason);
+                const dayBookRow: Omit<DayBookEntry, "id"> = {
+                  uid: dayBookUid,
+                  time: lossRow.date,
+                  type: "Expense",
+                  category: "Other",
+                  amount: lossRow.estimatedCost,
+                  description: `Inventory loss (${lossRow.lossType}): ${lossRow.quantity} ${lossRow.unit} ${item.name}${reasonText ? ` - ${reasonText}` : ""}`,
+                  method: "Cash",
+                  accountId,
+                };
+                await db.dayBook.add(dayBookRow);
+              }
+            }
+          }
         }
       }
       if (e.entityType === "order.sale" && e.op === "create") {

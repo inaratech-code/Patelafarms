@@ -4,7 +4,7 @@ import { SidebarDesktop, SidebarProvider } from "@/components/sidebar/Sidebar";
 import { TopHeader } from "@/components/layout/TopHeader";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { clearSession, getSession } from "@/lib/auth";
@@ -14,17 +14,19 @@ import { canAccessPath, normalizePermissions, pickDefaultRoute } from "@/lib/rba
 export function AppShell(props: { children: React.ReactNode }) {
   const pathname = usePathname();
   const users = useLiveQuery(() => db.users.toArray());
-  const [checked, setChecked] = useState(false);
-  const session = useMemo(() => getSession(), [pathname]);
+  const session = getSession();
   const role = useLiveQuery(async () => {
     const roleId = session?.roleId ?? 0;
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
 
+  const usersLoaded = users !== undefined;
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
-  const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
+  const isBootstrapAllowed = usersLoaded && !hasUsers && (pathname === "/users" || pathname === "/login");
+  const authed = Boolean(session?.userId);
+  const shouldRedirectToLogin = !isLoginRoute && usersLoaded && !isBootstrapAllowed && !authed;
 
   // Auto logout after 1 hour of inactivity.
   useEffect(() => {
@@ -79,22 +81,18 @@ export function AppShell(props: { children: React.ReactNode }) {
     check();
 
     return () => {
-      for (const ev of events) window.removeEventListener(ev, markActive as any);
+      for (const ev of events) window.removeEventListener(ev, markActive);
       document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(interval);
     };
   }, [isLoginRoute, session?.userId]);
 
   useEffect(() => {
-    const authed = Boolean(session?.userId);
-    if (!isLoginRoute && !isBootstrapAllowed && !authed) {
-      // In dev (Turbopack), next/navigation can dispatch before router init.
-      // Use a hard navigation for auth gating to avoid that class of error.
-      window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
-      return; // keep UI blank; avoid flashing dashboard before redirect
-    }
-    setChecked(true);
-  }, [isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
+    if (!shouldRedirectToLogin) return;
+    // In dev (Turbopack), next/navigation can dispatch before router init.
+    // Use a hard navigation for auth gating to avoid that class of error.
+    window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+  }, [pathname, shouldRedirectToLogin]);
 
   useEffect(() => {
     if (isLoginRoute || isBootstrapAllowed) return;
@@ -121,7 +119,7 @@ export function AppShell(props: { children: React.ReactNode }) {
   }, [isLoginRoute]);
 
   // Prevent brief flash of app before redirect.
-  if (!checked && !isLoginRoute) return null;
+  if ((!usersLoaded || shouldRedirectToLogin) && !isLoginRoute) return null;
 
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;
