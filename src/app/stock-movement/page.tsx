@@ -2,7 +2,7 @@
 
 import { Plus, Minus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type StockMovement } from "@/lib/db";
 import { makeSyncEvent } from "@/lib/syncEvents";
@@ -14,26 +14,24 @@ const reasonOptions: Array<StockMovement["reason"]> = ["Harvest", "Sale", "Usage
 
 export default function StockMovementPage() {
   const searchParams = useSearchParams();
-  const qpItemId = Number(searchParams.get("itemId") ?? 0);
+  const qpItemIdRaw = Number(searchParams.get("itemId") ?? 0);
+  const qpItemId = Number.isFinite(qpItemIdRaw) ? qpItemIdRaw : 0;
 
-  const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
-  const movements = useLiveQuery(() => db.stockMovement.toArray()) || [];
+  const inventoryRaw = useLiveQuery(() => db.inventory.toArray());
+  const movementsRaw = useLiveQuery(() => db.stockMovement.toArray());
+  const inventory = useMemo(() => inventoryRaw ?? [], [inventoryRaw]);
+  const movements = useMemo(() => movementsRaw ?? [], [movementsRaw]);
 
   const [mode, setMode] = useState<MovementMode>("Add");
   const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({
-    itemId: 0,
+  const [form, setForm] = useState(() => ({
+    itemId: qpItemId,
     quantity: 1,
     reason: "Harvest" as StockMovement["reason"],
-  });
+  }));
 
   const selectedItem = useMemo(() => inventory.find((i) => i.id === Number(form.itemId)), [inventory, form.itemId]);
   const movementType: StockMovement["type"] = mode === "Add" ? "IN" : "OUT";
-
-  useEffect(() => {
-    if (!qpItemId) return;
-    setForm((f) => ({ ...f, itemId: qpItemId }));
-  }, [qpItemId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +48,8 @@ export default function StockMovementPage() {
     try {
       setIsSaving(true);
       await db.transaction("rw", db.tables, async () => {
+        const itemUid = item.uid ?? newUid();
+        if (!item.uid) await db.inventory.update(item.id!, { uid: itemUid });
         await db.inventory.update(item.id!, { quantity: nextQty });
         const movement = {
           uid: newUid(),
@@ -60,12 +60,18 @@ export default function StockMovementPage() {
           date,
         };
         const id = await db.stockMovement.add(movement);
+        const delta = movementType === "IN" ? qty : -qty;
         await db.outbox.add(
           makeSyncEvent({
             entityType: "stock.movement",
             entityId: movement.uid!,
             op: "create",
-            payload: { id, movement },
+            payload: {
+              id,
+              itemUid,
+              movement: { ...movement, itemUid },
+              inventoryDelta: { itemUid, delta },
+            },
           })
         );
       });
