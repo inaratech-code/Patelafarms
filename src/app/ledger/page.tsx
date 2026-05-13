@@ -54,16 +54,16 @@ export default function LedgerPage() {
     if (!ok) return;
 
     await db.transaction("rw", db.tables, async () => {
-      if (acct.uid) {
-        await db.outbox.add(
-          makeSyncEvent({
-            entityType: "ledger.account",
-            entityId: acct.uid,
-            op: "delete",
-            payload: { uid: acct.uid },
-          })
-        );
-      }
+      const uid = acct.uid ?? newUid();
+      if (!acct.uid) await db.ledgerAccounts.update(accountId, { uid });
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "ledger.account",
+          entityId: uid,
+          op: "delete",
+          payload: { uid },
+        })
+      );
       await db.ledgerAccounts.delete(accountId);
     });
   };
