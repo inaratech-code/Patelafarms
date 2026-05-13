@@ -53,18 +53,41 @@ export async function getOrCreateLedgerAccountId(params: {
   const name = params.name.trim();
   if (!name) throw new Error("Ledger account name is required");
 
-  const existing = await db.ledgerAccounts
-    .where({ name, type: params.type })
-    .first();
+  return await db.transaction("rw", db.tables, async () => {
+    const existing = await db.ledgerAccounts
+      .where({ name, type: params.type })
+      .first();
 
-  if (typeof existing?.id === "number") {
-    if (!existing.uid) await db.ledgerAccounts.update(existing.id, { uid: newUid() });
-    return existing.id;
-  }
+    if (typeof existing?.id === "number") {
+      if (!existing.uid) {
+        const uid = newUid();
+        const account: Omit<LedgerAccount, "id"> = { uid, name: existing.name, type: existing.type };
+        await db.ledgerAccounts.update(existing.id, { uid });
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "ledger.account",
+            entityId: uid,
+            op: "create",
+            payload: { id: existing.id, account },
+          })
+        );
+      }
+      return existing.id;
+    }
 
-  const id = await db.ledgerAccounts.add({ uid: newUid(), name, type: params.type });
-  if (typeof id !== "number") throw new Error("Failed to create ledger account");
-  return id;
+    const account = { uid: newUid(), name, type: params.type };
+    const id = await db.ledgerAccounts.add(account);
+    if (typeof id !== "number") throw new Error("Failed to create ledger account");
+    await db.outbox.add(
+      makeSyncEvent({
+        entityType: "ledger.account",
+        entityId: account.uid,
+        op: "create",
+        payload: { id, account },
+      })
+    );
+    return id;
+  });
 }
 
 export async function addLedgerEntry(params: {

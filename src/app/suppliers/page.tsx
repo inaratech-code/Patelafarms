@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/db";
+import { getOrCreateLedgerAccountId } from "@/lib/ledger";
 import { Plus, Truck, ArrowRight, HandCoins } from "lucide-react";
 
 function computeBalances(entries: Array<{ accountId: number; debit: number; credit: number }>) {
@@ -41,7 +42,7 @@ export default function SuppliersPage() {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    await db.ledgerAccounts.add({ name: trimmed, type: "Supplier" });
+    await getOrCreateLedgerAccountId({ name: trimmed, type: "Supplier" });
     setName("");
     setShowForm(false);
   };

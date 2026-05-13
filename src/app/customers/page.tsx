@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/db";
+import { getOrCreateLedgerAccountId } from "@/lib/ledger";
 import { Plus, Users, ArrowRight } from "lucide-react";
 
 export default function CustomersPage() {
@@ -35,7 +36,7 @@ export default function CustomersPage() {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    await db.ledgerAccounts.add({ name: trimmed, type: "Customer" });
+    await getOrCreateLedgerAccountId({ name: trimmed, type: "Customer" });
     setName("");
     setShowForm(false);
   };
