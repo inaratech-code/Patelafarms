@@ -5,4 +5,5 @@ export * from "@/components/dashboard/QuickActions";
 export * from "@/components/dashboard/RecentActivity";
 export * from "@/components/dashboard/InventorySnapshot";
 export * from "@/components/dashboard/FinanceSnapshot";
+export * from "@/components/dashboard/HealthSnapshot";
 

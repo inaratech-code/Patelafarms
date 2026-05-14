@@ -3,7 +3,7 @@
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { db, type DayBookEntry } from "@/lib/db";
 import { addLedgerEntry, getOrCreateLedgerAccountId } from "@/lib/ledger";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
@@ -143,6 +143,7 @@ export default function PurchasesPage() {
     }
 
     await db.transaction("rw", db.tables, async () => {
+      const purchaseBatchRef = newUid();
       for (const li of lineItemsResolved) {
         const item = li.item!;
         const lineCost = li.unitCost * li.quantity;
@@ -207,6 +208,11 @@ export default function PurchasesPage() {
           description: `${description} (${purchaseForm.method})`,
           method: purchaseForm.method,
           accountId,
+          affectsCash: true,
+          party: supplierName,
+          entryStatus: "Paid" as const,
+          refType: "purchase",
+          refId: purchaseBatchRef,
         };
         await db.dayBook.add(day);
         await db.outbox.add(
@@ -235,6 +241,34 @@ export default function PurchasesPage() {
             })
           );
         }
+
+        const batchRef = purchaseBatchRef;
+        const accountIdDb = await getOrCreateDefaultCashAccountId();
+        const acctDb = await db.financialAccounts.get(accountIdDb);
+        const day = {
+          uid: newUid(),
+          time: date,
+          type: "Expense" as const,
+          category: "Purchase" as const,
+          amount: totalCost,
+          description: `${description} (Credit)`,
+          method: "Credit" as const,
+          accountId: accountIdDb,
+          affectsCash: false,
+          party: supplierName,
+          entryStatus: "Due" as const,
+          refType: "purchase",
+          refId: batchRef,
+        };
+        await db.dayBook.add(day as Omit<DayBookEntry, "id">);
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "daybook.entry",
+            entityId: day.uid!,
+            op: "create",
+            payload: { entry: { ...day, account: acctDb?.uid ? { uid: acctDb.uid, name: acctDb.name, type: acctDb.type } : null } },
+          })
+        );
       }
     });
 

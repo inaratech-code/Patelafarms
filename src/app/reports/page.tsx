@@ -8,6 +8,7 @@ import {
   inventoryStockValue,
   localDayKey,
 } from "@/lib/erp/metrics";
+import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 
 function monthKeyNow() {
   const n = new Date();
@@ -66,7 +67,13 @@ export default function ReportsPage() {
       .filter((p) => isWithinRange(p.date))
       .reduce((a, p) => a + Number(p.totalCost ?? 0), 0);
     const dayBookExpenses = dayBook
-      .filter((e) => e.type === "Expense" && isWithinRange(e.time))
+      .filter(
+        (e) =>
+          dayBookEntryAffectsCash(e) &&
+          e.type === "Expense" &&
+          e.category !== "Purchase" &&
+          isWithinRange(e.time)
+      )
       .reduce((a, e) => a + Number(e.amount ?? 0), 0);
     const feedCost = consumption.filter((c) => isWithinRange(c.date)).reduce((a, c) => a + Number(c.cost ?? 0), 0);
     const lossCost = losses.filter((l) => isWithinRange(l.date)).reduce((a, l) => a + Number(l.estimatedCost ?? 0), 0);

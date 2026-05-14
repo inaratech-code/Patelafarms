@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { PackagePlus, ShoppingCart, Truck, Receipt, BookOpenText, UserPlus, ChevronRight } from "lucide-react";
+import { PackagePlus, ShoppingCart, Truck, Receipt, BookOpenText, UserPlus, ChevronRight, Syringe } from "lucide-react";
 
 const actions = [
   { href: "/inventory", label: "Add Inventory", icon: PackagePlus, tint: "bg-[#0871b3]/10 text-[#0871b3]" },
   { href: "/orders", label: "Record Sale", icon: ShoppingCart, tint: "bg-[#80a932]/12 text-[#80a932]" },
+  { href: "/farm-health/vaccines", label: "Vaccine / medicine", icon: Syringe, tint: "bg-sky-500/10 text-sky-800" },
   { href: "/purchases", label: "Add Supplier", icon: Truck, tint: "bg-amber-500/10 text-amber-700" },
   { href: "/expenses", label: "Add Expense", icon: Receipt, tint: "bg-rose-500/10 text-rose-700" },
   { href: "/ledger", label: "New Ledger Entry", icon: BookOpenText, tint: "bg-violet-500/10 text-violet-700" },

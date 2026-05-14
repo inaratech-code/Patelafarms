@@ -12,6 +12,7 @@ import { sidebarGroups, sidebarTopLevel, type SidebarGroupId } from "@/component
 import { LogOut, Menu, X } from "lucide-react";
 import { clearSession, getSession } from "@/lib/auth";
 import { canAccessPath, normalizePermissions } from "@/lib/rbac";
+import { computeNavBadgeCount } from "@/lib/notificationCounts";
 
 type SidebarContextValue = {
   openMobile: () => void;
@@ -34,32 +35,6 @@ function safeJsonParse<T>(value: string | null, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function computeAlertBadge(params: {
-  inventory: Array<{ quantity: number; minStockThreshold: number; reorderLevel?: number }>;
-  ledgerAccounts: Array<{ id?: number }>;
-  ledgerEntries: Array<{ accountId: number; debit: number; credit: number }>;
-}) {
-  const lowStock = params.inventory.filter((i) => {
-    const th = i.reorderLevel ?? i.minStockThreshold ?? 0;
-    return i.quantity <= th;
-  }).length;
-
-  const sums = new Map<number, { debit: number; credit: number }>();
-  for (const e of params.ledgerEntries) {
-    const cur = sums.get(e.accountId) ?? { debit: 0, credit: 0 };
-    cur.debit += e.debit;
-    cur.credit += e.credit;
-    sums.set(e.accountId, cur);
-  }
-  const pending = params.ledgerAccounts.filter((a) => {
-    if (typeof a.id !== "number") return false;
-    const s = sums.get(a.id) ?? { debit: 0, credit: 0 };
-    return s.debit - s.credit !== 0;
-  }).length;
-
-  return lowStock + pending;
 }
 
 export function SidebarProvider(props: { children: React.ReactNode }) {
@@ -117,6 +92,8 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
   const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray()) || [];
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
+  const doseReminders = useLiveQuery(() => db.doseReminders.toArray()) || [];
+  const vaccines = useLiveQuery(() => db.vaccines.toArray()) || [];
   const session = useMemo(() => getSession(), [pathname]);
   const role = useLiveQuery(async () => {
     const roleId = session?.roleId ?? 0;
@@ -130,8 +107,8 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
   }, [role, session?.roleId]);
 
   const alertBadge = useMemo(
-    () => computeAlertBadge({ inventory, ledgerAccounts, ledgerEntries }),
-    [inventory, ledgerAccounts, ledgerEntries]
+    () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines }),
+    [inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines]
   );
 
   const storageKey = "pf.sidebar.v1";
@@ -139,6 +116,7 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
     inventory: false,
     transactions: false,
     accounts: false,
+    farmHealth: false,
     people: false,
   };
 

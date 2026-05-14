@@ -131,6 +131,9 @@ export default function LossWastagePage() {
           description,
           method: "Cash" as const,
           accountId,
+          affectsCash: true,
+          entryStatus: "Paid" as const,
+          party: item.name,
         };
         const dayBookId = await db.dayBook.add(day);
 

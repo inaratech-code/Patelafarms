@@ -1,7 +1,9 @@
 import { db, type DayBookEntry, type FinancialAccount } from "@/lib/db";
 import { newUid } from "@/lib/uid";
+import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 
-export type PaymentMethod = NonNullable<DayBookEntry["method"]>;
+/** Methods used when cash or bank actually moves (manual expenses, cash sales, etc.). */
+export type PaymentMethod = "Cash" | "QR" | "BankTransfer";
 
 export async function getOrCreateDefaultCashAccountId() {
   const existing = await db.financialAccounts.where("type").equals("Cash").first();
@@ -25,6 +27,7 @@ export function computeAccountBalance(params: {
   let bal = 0;
   for (const e of params.dayBookEntries) {
     if (e.accountId !== params.accountId) continue;
+    if (!dayBookEntryAffectsCash(e)) continue;
     bal += e.type === "Income" ? e.amount : -e.amount;
   }
   return bal;

@@ -4,7 +4,7 @@ import { ShoppingCart, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type PaymentStatusErp } from "@/lib/db";
+import { db, type DayBookEntry, type PaymentStatusErp } from "@/lib/db";
 import {
   addLedgerEntry,
   getOrCreateLedgerAccountId,
@@ -14,6 +14,7 @@ import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMet
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { buildSupplierNameOptions } from "@/lib/supplierOptions";
+import { normalizeSaleUnit, SALE_UNIT_OPTIONS } from "@/lib/saleUnits";
 
 /** Digits + one dot; strips meaningless leading zeros on the whole part (keeps 0.5). */
 function normalizeSaleQtyInput(raw: string): string {
@@ -90,10 +91,13 @@ export default function OrdersPage() {
       setSaleForm((s) => ({ ...s, itemId }));
       setShowForm(true);
       setSaleUnitPriceStr("");
+      const inv = inventory.find((i) => i.id === itemId);
+      if (inv) setSaleUnit(normalizeSaleUnit(inv.unit, "pcs"));
     }
-  }, [searchParams]);
+  }, [searchParams, inventory]);
   
   const [saleQuantityStr, setSaleQuantityStr] = useState("1");
+  const [saleUnit, setSaleUnit] = useState<string>("pcs");
   const [saleUnitPriceStr, setSaleUnitPriceStr] = useState("");
   const [saleForm, setSaleForm] = useState<{
     itemId: number;
@@ -172,6 +176,7 @@ export default function OrdersPage() {
     }
     const item = inventory.find(i => i.id === Number(saleForm.itemId));
     if (!item || item.quantity < qtyParsed) return alert("Not enough stock!");
+    const unitLabel = normalizeSaleUnit(saleUnit, item.unit);
 
     const unitPrice = parseSaleQuantityInput(saleUnitPriceStr.trim());
     if (unitPrice == null || unitPrice <= 0) {
@@ -190,10 +195,12 @@ export default function OrdersPage() {
       const cashLedgerAccountId = !isCredit ? await getOrCreateCashLedgerAccountId() : null;
 
       // 1. Record Sale
+      const saleUid = newUid();
       const sale = {
-        uid: newUid(),
+        uid: saleUid,
         itemId: item.id!,
         quantity: qtyParsed,
+        saleUnit: unitLabel,
         totalPrice,
         unitPrice,
         customerName: customerNameResolved || undefined,
@@ -210,25 +217,48 @@ export default function OrdersPage() {
       // 3. Record Movement
       const movement = { uid: newUid(), itemId: item.id!, quantity: qtyParsed, type: 'OUT' as const, reason: 'Sale' as const, date };
       const movementId = await db.stockMovement.add(movement);
-      // 4. DayBook Entry (cash only)
+      // 4. Day book: cash (affects cash) + credit (journal-only, does not affect cash balance)
       let dayBookId: number | null = null;
       let dayBookUid: string | null = null;
-      let dayBookEntry: any = null;
-      if (!isCredit) {
+      let dayBookEntry: Record<string, unknown> | null = null;
+      {
         const accountId = Number(saleForm.financialAccountId) || (await getOrCreateDefaultCashAccountId());
         const acct = await db.financialAccounts.get(accountId);
         dayBookUid = newUid();
-        dayBookEntry = {
-          uid: dayBookUid,
-          time: date,
-          type: "Income",
-          category: "Sale",
-          amount: totalPrice,
-          description: `Sold ${qtyParsed} ${item.unit} ${item.name} @ Rs.${unitPrice}/${item.unit} (${saleForm.method})`,
-          method: saleForm.method,
-          accountId,
-        };
-        dayBookId = (await db.dayBook.add(dayBookEntry)) as number;
+        if (!isCredit) {
+          dayBookEntry = {
+            uid: dayBookUid,
+            time: date,
+            type: "Income",
+            category: "Sale",
+            amount: totalPrice,
+            description: `Sold ${qtyParsed} ${unitLabel} ${item.name} @ Rs.${unitPrice}/${unitLabel} (${saleForm.method})`,
+            method: saleForm.method,
+            accountId,
+            affectsCash: true,
+            party: customerNameResolved || "Cash sale",
+            entryStatus: "Paid",
+            refType: "sale",
+            refId: saleUid,
+          };
+        } else {
+          dayBookEntry = {
+            uid: dayBookUid,
+            time: date,
+            type: "Income",
+            category: "Sale",
+            amount: totalPrice,
+            description: `Credit sale: ${qtyParsed} ${unitLabel} ${item.name} @ Rs.${unitPrice}/${unitLabel}`,
+            method: "Credit",
+            accountId,
+            affectsCash: false,
+            party: customerNameResolved,
+            entryStatus: "Unpaid",
+            refType: "sale",
+            refId: saleUid,
+          };
+        }
+        dayBookId = (await db.dayBook.add(dayBookEntry as Omit<DayBookEntry, "id">)) as number;
 
         await db.outbox.add(
           makeSyncEvent({
@@ -238,9 +268,7 @@ export default function OrdersPage() {
             payload: {
               entry: {
                 ...dayBookEntry,
-                account: acct?.uid
-                  ? { uid: acct.uid, name: acct.name, type: acct.type }
-                  : null,
+                account: acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null,
               },
             },
           })
@@ -259,7 +287,7 @@ export default function OrdersPage() {
         ledgerEntryId = (await addLedgerEntry({
           accountId: ledgerAccountId,
           date,
-          description: `Cash sale: ${qtyParsed} ${item.unit} ${item.name} @ Rs.${unitPrice}/${item.unit}`,
+          description: `Cash sale: ${qtyParsed} ${unitLabel} ${item.name} @ Rs.${unitPrice}/${unitLabel}`,
           debit: totalPrice,
           credit: 0,
         })) as number;
@@ -280,7 +308,7 @@ export default function OrdersPage() {
         ledgerEntryId = (await addLedgerEntry({
           accountId: ledgerAccountId,
           date,
-          description: `Credit sale: ${qtyParsed} ${item.unit} ${item.name} @ Rs.${unitPrice}/${item.unit}`,
+          description: `Credit sale: ${qtyParsed} ${unitLabel} ${item.name} @ Rs.${unitPrice}/${unitLabel}`,
           debit: totalPrice,
           credit: 0,
         })) as number;
@@ -310,7 +338,7 @@ export default function OrdersPage() {
       await db.outbox.add(
         makeSyncEvent({
           entityType: "order.sale",
-          entityId: sale.uid!,
+          entityId: saleUid,
           op: "create",
           payload: {
             sale: { ...sale, itemUid: item.uid },
@@ -327,6 +355,7 @@ export default function OrdersPage() {
     setShowForm(false);
     setSaleQuantityStr("1");
     setSaleUnitPriceStr("");
+    setSaleUnit("pcs");
     setSaleForm({
       itemId: 0,
       customerName: "",
@@ -386,7 +415,7 @@ export default function OrdersPage() {
 
       // Purchase accounting:
       // - Cash: affects Day Book (selected account) and does NOT create payable.
-      // - Credit: creates payable in ledger and does NOT affect Day Book.
+      // - Credit: creates payable in ledger + journal day book row (no cash impact).
       let dayBookId: number | null = null;
       let dayBookUid: string | null = null;
       let dayBookEntry: any = null;
@@ -407,6 +436,11 @@ export default function OrdersPage() {
           description: `${description} (${purchaseForm.method})`,
           method: purchaseForm.method,
           accountId,
+          affectsCash: true,
+          party: supplierName,
+          entryStatus: "Paid",
+          refType: "purchase",
+          refId: purchaseBatchUid,
         };
         dayBookId = (await db.dayBook.add(dayBookEntry)) as number;
 
@@ -451,6 +485,39 @@ export default function OrdersPage() {
             })
           );
         }
+
+        const accountIdDb = await getOrCreateDefaultCashAccountId();
+        const acctDb = await db.financialAccounts.get(accountIdDb);
+        dayBookUid = newUid();
+        dayBookEntry = {
+          uid: dayBookUid,
+          time: date,
+          type: "Expense",
+          category: "Purchase",
+          amount: totalCost,
+          description: `${description} (Credit)`,
+          method: "Credit",
+          accountId: accountIdDb,
+          affectsCash: false,
+          party: supplierName,
+          entryStatus: "Due",
+          refType: "purchase",
+          refId: purchaseBatchUid,
+        };
+        dayBookId = (await db.dayBook.add(dayBookEntry as Omit<DayBookEntry, "id">)) as number;
+        await db.outbox.add(
+          makeSyncEvent({
+            entityType: "daybook.entry",
+            entityId: dayBookUid,
+            op: "create",
+            payload: {
+              entry: {
+                ...dayBookEntry,
+                account: acctDb?.uid ? { uid: acctDb.uid, name: acctDb.name, type: acctDb.type } : null,
+              },
+            },
+          })
+        );
       }
 
       await db.outbox.add(
@@ -516,6 +583,8 @@ export default function OrdersPage() {
                 const id = Number(e.target.value);
                 setSaleForm({ ...saleForm, itemId: id });
                 setSaleUnitPriceStr("");
+                const inv = inventory.find((i) => i.id === id);
+                if (inv) setSaleUnit(normalizeSaleUnit(inv.unit, "pcs"));
               }}
               className="w-full px-3 py-2 border rounded-md bg-white"
             >
@@ -534,6 +603,21 @@ export default function OrdersPage() {
               className="w-full px-3 py-2 border rounded-md"
               placeholder="e.g. 29.8"
             />
+            <p className="mt-1 text-xs text-slate-500">Stock is deducted in inventory units; pick a bill label below.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Unit</label>
+            <select
+              value={saleUnit}
+              onChange={(e) => setSaleUnit(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md bg-white"
+            >
+              {SALE_UNIT_OPTIONS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Selling price (per unit)</label>
@@ -817,11 +901,11 @@ export default function OrdersPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
                         {sale.quantity}x {item?.name || "Unknown"}
                         <span className="block text-xs text-slate-500 mt-0.5">
-                          @ Rs.{" "}
+                          {sale.saleUnit ?? item?.unit ?? "pcs"} @ Rs.{" "}
                           {(sale.unitPrice ??
                             (sale.quantity ? sale.totalPrice / sale.quantity : 0)
                           ).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                          {item?.unit ? `/${item.unit}` : ""}
+                          /{sale.saleUnit ?? item?.unit ?? "unit"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-alert-green">+ Rs. {sale.totalPrice}</td>

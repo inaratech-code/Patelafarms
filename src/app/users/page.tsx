@@ -32,11 +32,14 @@ type PermissionId =
   | "people.workers"
   | "people.users"
   | "alerts"
-  | "settings";
+  | "settings"
+  | "farmHealth.vaccines"
+  | "farmHealth.doseSchedule"
+  | "farmHealth.healthLogs";
 
 /** Matches `sidebarConfig` routes and labels for role-based access configuration. */
 const PERMISSION_GROUPS: Array<{
-  id: "top" | "inventory" | "transactions" | "accounts" | "people" | "bottom";
+  id: "top" | "inventory" | "transactions" | "accounts" | "farmHealth" | "people" | "bottom";
   label: string;
   items: Array<{ id: PermissionId; label: string }>;
 }> = [
@@ -77,6 +80,15 @@ const PERMISSION_GROUPS: Array<{
       { id: "accounts.dayBook", label: "Day Book" },
       { id: "accounts.payments", label: "Payments" },
       { id: "accounts.accounts", label: "Financial Accounts" },
+    ],
+  },
+  {
+    id: "farmHealth",
+    label: "Farm Health",
+    items: [
+      { id: "farmHealth.vaccines", label: "Vaccines" },
+      { id: "farmHealth.doseSchedule", label: "Dose Schedule" },
+      { id: "farmHealth.healthLogs", label: "Health Logs" },
     ],
   },
   {

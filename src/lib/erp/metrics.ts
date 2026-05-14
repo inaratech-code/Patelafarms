@@ -1,4 +1,5 @@
 import type { ConsumptionLog, DayBookEntry, InventoryItem, InventoryLoss, Purchase, Sale } from "@/lib/db";
+import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 
 export type ErpMetricInputs = {
   inventory: InventoryItem[];
@@ -60,7 +61,26 @@ export function lossExpenseMonth(losses: InventoryLoss[], monthKey: string) {
 
 export function operatingExpensesMonth(dayBook: DayBookEntry[], monthKey: string) {
   return dayBook
-    .filter((e) => e.type === "Expense" && e.category !== "Purchase" && e.time.slice(0, 7) === monthKey)
+    .filter(
+      (e) =>
+        dayBookEntryAffectsCash(e) &&
+        e.type === "Expense" &&
+        e.category !== "Purchase" &&
+        e.time.slice(0, 7) === monthKey
+    )
+    .reduce((a, e) => a + Number(e.amount ?? 0), 0);
+}
+
+/** Cash / P&L vaccine & medicine expenses posted to day book (this calendar month). */
+export function medicineExpenseMonth(dayBook: DayBookEntry[], monthKey: string) {
+  return dayBook
+    .filter(
+      (e) =>
+        dayBookEntryAffectsCash(e) &&
+        e.type === "Expense" &&
+        e.category === "Vaccine" &&
+        e.time.slice(0, 7) === monthKey
+    )
     .reduce((a, e) => a + Number(e.amount ?? 0), 0);
 }
 
@@ -84,6 +104,7 @@ export function expenseTrend7d(dayBook: DayBookEntry[]) {
   const idx = new Map(out.map((r, i) => [r.x, i]));
   for (const e of dayBook) {
     if (e.type !== "Expense") continue;
+    if (!dayBookEntryAffectsCash(e)) continue;
     const k = dayKeyFromStoredInstant(e.time);
     const j = idx.get(k);
     if (typeof j === "number") out[j] = { ...out[j], y: out[j].y + Number(e.amount ?? 0) };

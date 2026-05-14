@@ -1,0 +1,204 @@
+import { db, type DoseReminderStatus, type ReminderCadence, type VaccineUsage } from "@/lib/db";
+import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
+import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
+import { newUid } from "@/lib/uid";
+import { makeSyncEvent } from "@/lib/syncEvents";
+
+export function isoDateOnly(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function addDurationToDate(isoDateYYYYMMDD: string, value: number, unit: "days" | "months") {
+  const d = new Date(`${isoDateYYYYMMDD}T12:00:00`);
+  if (unit === "months") d.setMonth(d.getMonth() + value);
+  else d.setDate(d.getDate() + value);
+  return isoDateOnly(d);
+}
+
+/** Effective status from dates (completed is sticky). */
+export function computeDoseReminderStatus(params: {
+  reminderDate: string;
+  completedAt?: string;
+  persisted: DoseReminderStatus;
+}): DoseReminderStatus {
+  if (params.persisted === "completed" || params.completedAt) return "completed";
+  const today = isoDateOnly(new Date());
+  if (params.reminderDate < today) return "overdue";
+  if (params.reminderDate === today) return "due_today";
+  return "upcoming";
+}
+
+/** True if expiry is within `withinDays` from today (inclusive), and not already past. */
+export function vaccineExpirySoon(v: { expiryDate?: string }, todayIso: string, withinDays: number): boolean {
+  const ex = v.expiryDate?.trim();
+  if (!ex) return false;
+  const end = new Date(`${ex}T23:59:59`);
+  const start = new Date(`${todayIso}T12:00:00`);
+  const diff = (end.getTime() - start.getTime()) / 86400000;
+  return diff >= 0 && diff <= withinDays;
+}
+
+export async function refreshDoseReminderStatuses() {
+  const rows = await db.doseReminders.toArray();
+  for (const r of rows) {
+    if (!r.id) continue;
+    if (r.completedAt || r.status === "completed") continue;
+    const next = computeDoseReminderStatus({
+      reminderDate: r.reminderDate,
+      completedAt: r.completedAt,
+      persisted: r.status,
+    });
+    if (next !== r.status) await db.doseReminders.update(r.id, { status: next });
+  }
+}
+
+export type RecordVaccineUsageInput = {
+  vaccineId: number;
+  qtyUsed: number;
+  animalBatch: string;
+  doseDateIso: string;
+  nextIntervalValue?: number;
+  nextIntervalUnit?: "days" | "months";
+  cadence?: ReminderCadence;
+  notes?: string;
+};
+
+/**
+ * Records vaccine usage: stock reduction, day book + cash ledger expense, health log, next-dose reminder.
+ * Farm-health tables are local-only (no sync outbox) until cloud schema supports them.
+ */
+export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
+  const qty = Number(inp.qtyUsed);
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error("Quantity must be greater than 0.");
+  const batch = inp.animalBatch.trim();
+  if (!batch) throw new Error("Animal batch is required.");
+
+  await db.transaction("rw", db.tables, async () => {
+    const vaccine = await db.vaccines.get(inp.vaccineId);
+    if (!vaccine?.id) throw new Error("Vaccine not found.");
+    const available = Number(vaccine.qtyAvailable ?? 0);
+    if (available < qty) throw new Error("Not enough vaccine stock.");
+
+    const unitCost = Number(vaccine.costPrice ?? 0);
+    const expenseAmount = qty * unitCost;
+    const doseDay = isoDateOnly(new Date(inp.doseDateIso));
+    const cadence = inp.cadence ?? "daily";
+    const nextV = inp.nextIntervalValue;
+    const nextU = inp.nextIntervalUnit;
+    const nextDoseDate =
+      typeof nextV === "number" && nextV > 0 && (nextU === "days" || nextU === "months")
+        ? addDurationToDate(doseDay, nextV, nextU)
+        : undefined;
+
+    await db.vaccines.update(vaccine.id, { qtyAvailable: available - qty });
+
+    const usageUid = newUid();
+    const usage: Omit<VaccineUsage, "id"> = {
+      uid: usageUid,
+      vaccineId: vaccine.id,
+      qtyUsed: qty,
+      animalBatch: batch,
+      doseDate: inp.doseDateIso,
+      nextDoseDate,
+      nextIntervalValue: nextV,
+      nextIntervalUnit: nextU,
+      notes: inp.notes?.trim() || undefined,
+      expenseAmount,
+    };
+    const usageId = (await db.vaccineUsages.add(usage)) as number;
+
+    if (nextDoseDate) {
+      const initialStatus = computeDoseReminderStatus({
+        reminderDate: nextDoseDate,
+        persisted: "upcoming",
+      });
+      const reminderUid = newUid();
+      await db.doseReminders.add({
+        uid: reminderUid,
+        vaccineUsageId: usageId,
+        reminderDate: nextDoseDate,
+        status: initialStatus,
+        cadence,
+        title: `${vaccine.name} — ${batch}`,
+      });
+    }
+
+    const logUid = newUid();
+    await db.healthLogs.add({
+      uid: logUid,
+      date: inp.doseDateIso,
+      animalBatch: batch,
+      summary: `Vaccine / medicine: ${vaccine.name} (${qty} ${vaccine.unit})`,
+      notes: inp.notes?.trim() || undefined,
+      vaccineUsageId: usageId,
+    });
+
+    const accountId = await getOrCreateDefaultCashAccountId();
+    const fin = await db.financialAccounts.get(accountId);
+    const dayUid = newUid();
+    const desc = `Vaccine / medicine: ${qty} ${vaccine.unit} ${vaccine.name} (${batch})`;
+    const dayRow = {
+      uid: dayUid,
+      time: inp.doseDateIso,
+      type: "Expense" as const,
+      category: "Vaccine" as const,
+      amount: expenseAmount,
+      description: desc,
+      method: "Cash" as const,
+      accountId,
+      affectsCash: true,
+      party: vaccine.name,
+      entryStatus: "Paid" as const,
+      refType: "vaccine.usage",
+      refId: usageUid,
+    };
+    await db.dayBook.add(dayRow);
+
+    await db.outbox.add(
+      makeSyncEvent({
+        entityType: "daybook.entry",
+        entityId: dayUid,
+        op: "create",
+        payload: {
+          entry: {
+            ...dayRow,
+            account: fin?.uid ? { uid: fin.uid, name: fin.name, type: fin.type } : null,
+          },
+        },
+      })
+    );
+
+    const cashLedgerId = await getOrCreateCashLedgerAccountId();
+    const ledgerEntryId = (await addLedgerEntry({
+      accountId: cashLedgerId,
+      date: inp.doseDateIso,
+      description: `Vaccine expense: ${vaccine.name} (${batch})`,
+      debit: 0,
+      credit: expenseAmount,
+    })) as number;
+    const cashAcct = await db.ledgerAccounts.get(cashLedgerId);
+    const entryRow = await db.ledgerEntries.get(ledgerEntryId);
+    if (cashAcct?.uid && entryRow?.uid) {
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "ledger.entry",
+          entityId: entryRow.uid,
+          op: "create",
+          payload: {
+            account: { uid: cashAcct.uid, name: cashAcct.name, type: cashAcct.type },
+            entry: {
+              uid: entryRow.uid,
+              date: entryRow.date,
+              description: entryRow.description,
+              debit: entryRow.debit,
+              credit: entryRow.credit,
+            },
+          },
+        })
+      );
+    }
+  });
+}

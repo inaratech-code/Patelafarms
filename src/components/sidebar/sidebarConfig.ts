@@ -16,9 +16,13 @@ import {
   BarChart3,
   PackageOpen,
   FileStack,
+  HeartPulse,
+  CalendarClock,
+  ClipboardList,
+  Syringe,
 } from "lucide-react";
 
-export type SidebarGroupId = "inventory" | "transactions" | "accounts" | "people";
+export type SidebarGroupId = "inventory" | "transactions" | "accounts" | "farmHealth" | "people";
 
 export type SidebarItemConfig = {
   id: string;
@@ -67,6 +71,16 @@ export const sidebarGroups: SidebarGroupConfig[] = [
       { id: "dayBook", label: "Day Book", href: "/daybook", icon: Clock },
       { id: "payments", label: "Payments", href: "/payments", icon: HandCoins },
       { id: "financialAccounts", label: "Financial Accounts", href: "/accounts", icon: Landmark },
+    ],
+  },
+  {
+    id: "farmHealth",
+    label: "Farm Health",
+    icon: HeartPulse,
+    items: [
+      { id: "vaccines", label: "Vaccines", href: "/farm-health/vaccines", icon: Syringe },
+      { id: "doseSchedule", label: "Dose Schedule", href: "/farm-health/dose-schedule", icon: CalendarClock },
+      { id: "healthLogs", label: "Health Logs", href: "/farm-health/health-logs", icon: ClipboardList },
     ],
   },
   {

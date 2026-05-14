@@ -397,6 +397,7 @@ export async function applyEvents(events: SyncEvent[]) {
             const row: AnyRecord = { ...entry };
             if (typeof accountId === "number") row.accountId = accountId;
             delete row.account;
+            if (row.affectsCash === undefined) row.affectsCash = true;
             await db.dayBook.add(row as unknown as Omit<DayBookEntry, "id">);
           }
         }
@@ -425,7 +426,7 @@ export async function applyEvents(events: SyncEvent[]) {
         const uid = entry ? asString(entry.uid) : undefined;
         if (uid) {
           const found = await db.dayBook.where("uid").equals(uid).first();
-          if (!found) await db.dayBook.add(entry as unknown as Omit<DayBookEntry, "id">);
+          if (!found) await db.dayBook.add({ ...(entry as AnyRecord), affectsCash: (entry as AnyRecord).affectsCash ?? true } as unknown as Omit<DayBookEntry, "id">);
         }
       }
       if (e.entityType === "payment.posted" && e.op === "create") {

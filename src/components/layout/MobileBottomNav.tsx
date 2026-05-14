@@ -25,6 +25,7 @@ const addActions = [
   { href: "/consumption", label: "Feed usage", icon: Package },
   { href: "/stock-movement", label: "Stock Movement", icon: ArrowUpDown },
   { href: "/loss-wastage", label: "Loss / Wastage", icon: AlertTriangle },
+  { href: "/farm-health/vaccines", label: "Vaccine / medicine", icon: Package },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/expenses", label: "Add Expense", icon: Receipt },
   { href: "/customers", label: "Add Customer", icon: Users },

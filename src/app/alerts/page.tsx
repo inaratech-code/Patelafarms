@@ -2,12 +2,19 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo } from "react";
-import { AlertCircle, Wallet, ArrowRight } from "lucide-react";
+import { useEffect, useMemo } from "react";
+import { AlertCircle, Wallet, ArrowRight, Syringe } from "lucide-react";
 import { db } from "@/lib/db";
+import { doseReminderEffectiveStatus } from "@/lib/notifications";
+import { vaccineExpirySoon, refreshDoseReminderStatuses } from "@/lib/farmHealth";
+import { localDayKey } from "@/lib/erp/metrics";
 
 export default function AlertsPage() {
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
+
+  useEffect(() => {
+    void refreshDoseReminderStatuses();
+  }, []);
   const accounts = useLiveQuery(() => db.ledgerAccounts.toArray()) || [];
   const entries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
 
@@ -21,6 +28,29 @@ export default function AlertsPage() {
         .sort((a, b) => a.quantity - b.quantity),
     [inventory]
   );
+
+  const doseReminders = useLiveQuery(() => db.doseReminders.toArray()) || [];
+  const vaccines = useLiveQuery(() => db.vaccines.toArray()) || [];
+
+  const todayKey = useMemo(() => localDayKey(new Date()), []);
+
+  const doseAlerts = useMemo(() => {
+    const urgent = doseReminders.filter((r) => {
+      const s = doseReminderEffectiveStatus(r);
+      return s === "overdue" || s === "due_today";
+    });
+    const soon = doseReminders.filter((r) => {
+      const s = doseReminderEffectiveStatus(r);
+      if (s !== "upcoming") return false;
+      const rd = r.reminderDate;
+      const d = new Date(`${todayKey}T12:00:00`);
+      d.setDate(d.getDate() + 3);
+      const limit = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return rd > todayKey && rd <= limit;
+    });
+    const exp = vaccines.filter((v) => vaccineExpirySoon(v, todayKey, 14));
+    return { urgent, soon, exp };
+  }, [doseReminders, vaccines, todayKey]);
 
   const pendingPayments = useMemo(() => {
     const byAccount = new Map<number, { debit: number; credit: number }>();
@@ -49,7 +79,7 @@ export default function AlertsPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Alerts & Notifications</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="rounded-xl bg-white shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
             <div>
@@ -118,6 +148,47 @@ export default function AlertsPage() {
               })}
             </div>
           )}
+        </div>
+
+        <div className="rounded-xl bg-white shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-slate-500">Farm health</div>
+              <div className="mt-1 text-lg font-semibold text-slate-900">
+                {doseAlerts.urgent.length} urgent dose(s) · {doseAlerts.exp.length} expiry
+              </div>
+            </div>
+            <Syringe className="w-6 h-6 text-sky-600" />
+          </div>
+          <div className="p-6 space-y-3 text-sm">
+            {doseAlerts.urgent.length === 0 && doseAlerts.soon.length === 0 && doseAlerts.exp.length === 0 ? (
+              <div className="text-slate-500">No vaccine alerts.</div>
+            ) : (
+              <>
+                {doseAlerts.urgent.map((r) => (
+                  <div key={r.id} className="flex justify-between gap-2 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2">
+                    <span className="font-medium text-rose-900">{r.title ?? "Dose"}</span>
+                    <span className="text-rose-800 shrink-0">{r.reminderDate}</span>
+                  </div>
+                ))}
+                {doseAlerts.soon.map((r) => (
+                  <div key={r.id} className="flex justify-between gap-2 rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2">
+                    <span className="font-medium text-orange-900">{r.title ?? "Dose"}</span>
+                    <span className="text-orange-800 shrink-0">{r.reminderDate}</span>
+                  </div>
+                ))}
+                {doseAlerts.exp.map((v) => (
+                  <div key={v.id} className="flex justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                    <span className="font-medium text-amber-900">{v.name}</span>
+                    <span className="text-amber-800 shrink-0">exp {v.expiryDate}</span>
+                  </div>
+                ))}
+              </>
+            )}
+            <Link href="/farm-health/dose-schedule" className="inline-flex items-center gap-1 text-primary font-semibold">
+              Open dose schedule <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
       </div>
     </div>

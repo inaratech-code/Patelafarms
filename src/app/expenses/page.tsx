@@ -9,6 +9,7 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { useRouter } from "next/navigation";
+import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 
 const expenseCategories: Array<DayBookEntry["category"]> = ["Transport", "Wage", "Other"];
 
@@ -40,7 +41,7 @@ export default function ExpensesPage() {
     const now = new Date();
     const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     return entries
-      .filter((e) => e.time.startsWith(key))
+      .filter((e) => e.time.startsWith(key) && dayBookEntryAffectsCash(e))
       .reduce((acc, e) => acc + e.amount, 0);
   }, [entries]);
 
@@ -66,6 +67,8 @@ export default function ExpensesPage() {
         description: form.description.trim(),
         method: form.method,
         accountId,
+        affectsCash: true,
+        entryStatus: "Paid" as const,
       };
 
       await db.transaction("rw", db.tables, async () => {

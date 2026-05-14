@@ -2,12 +2,15 @@
 
 import { Bell, User, Menu, RefreshCw, RotateCw, LogOut } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useSidebar } from "@/components/sidebar/Sidebar";
 import { clearSession, getSession } from "@/lib/auth";
 import { usePathname } from "next/navigation";
 import { syncNow } from "@/lib/sync";
+import { db } from "@/lib/db";
+import { computeNavBadgeCount } from "@/lib/notificationCounts";
 
 function subscribeOnlineStatus(onStoreChange: () => void) {
   window.addEventListener("online", onStoreChange);
@@ -31,6 +34,15 @@ export function TopHeader() {
   const isOnline = useSyncExternalStore(subscribeOnlineStatus, getOnlineSnapshot, getOnlineServerSnapshot);
   const sidebar = useSidebar();
   const pathname = usePathname();
+  const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
+  const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray()) || [];
+  const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
+  const doseReminders = useLiveQuery(() => db.doseReminders.toArray()) || [];
+  const vaccines = useLiveQuery(() => db.vaccines.toArray()) || [];
+  const bellCount = useMemo(
+    () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines }),
+    [inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines]
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [sessionTick, setSessionTick] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -123,9 +135,14 @@ export function TopHeader() {
           {isLandscapeMobile ? <RotateCw className="w-4 h-4 text-slate-400" /> : null}
         </button>
 
-        <Link href="/alerts" className="p-1 text-slate-400 bg-white rounded-full hover:text-slate-500 focus:outline-none">
+        <Link href="/alerts" className="relative p-1 text-slate-400 bg-white rounded-full hover:text-slate-500 focus:outline-none">
           <span className="sr-only">View notifications</span>
           <Bell className="w-6 h-6" aria-hidden="true" />
+          {bellCount > 0 ? (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-rose-600 text-[10px] font-bold text-white flex items-center justify-center">
+              {bellCount > 99 ? "99+" : bellCount}
+            </span>
+          ) : null}
         </Link>
 
         <div className="relative">

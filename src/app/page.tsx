@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { useMemo } from "react";
 import dynamic from "next/dynamic";
-import { HeroSection, StatsCards, SalesChart, QuickActions, RecentActivity, InventorySnapshot, FinanceSnapshot } from "@/components/dashboard";
+import { HeroSection, StatsCards, SalesChart, QuickActions, RecentActivity, InventorySnapshot, FinanceSnapshot, HealthSnapshot } from "@/components/dashboard";
 import { HandCoins, IndianRupee, TrendingUp } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import {
@@ -13,8 +13,10 @@ import {
   feedExpenseToday,
   localDayKey,
   lossTrend7d,
+  medicineExpenseMonth,
   netProfitErp,
 } from "@/lib/erp/metrics";
+import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 
 const Sparkline = dynamic(() => import("@/components/dashboard/_Sparkline").then((m) => m.Sparkline), { ssr: false });
 
@@ -53,8 +55,19 @@ export default function Dashboard() {
     .reduce((acc, p) => acc + p.totalCost, 0);
 
   const operatingExpensesThisMonth = (dayBook ?? [])
-    .filter((e) => e.type === "Expense" && e.category !== "Purchase" && e.time.startsWith(monthKey))
+    .filter(
+      (e) =>
+        dayBookEntryAffectsCash(e) &&
+        e.type === "Expense" &&
+        e.category !== "Purchase" &&
+        e.time.startsWith(monthKey)
+    )
     .reduce((acc, e) => acc + e.amount, 0);
+
+  const medicineMonth = useMemo(
+    () => medicineExpenseMonth(dayBook ?? [], monthKey),
+    [dayBook, monthKey]
+  );
 
   const salesRevenueThisMonth = (sales ?? [])
     .filter((s) => new Date(s.date).toISOString().slice(0, 7) === monthKey)
@@ -180,10 +193,19 @@ export default function Dashboard() {
     }
 
     const expensesToday = (dayBook ?? [])
-      .filter((e) => e.type === "Expense" && e.category !== "Purchase" && e.time.startsWith(todayKey))
+      .filter(
+        (e) =>
+          dayBookEntryAffectsCash(e) &&
+          e.type === "Expense" &&
+          e.category !== "Purchase" &&
+          e.time.startsWith(todayKey)
+      )
       .reduce((acc, e) => acc + e.amount, 0);
 
-    const cashInHand = (dayBook ?? []).reduce((acc, e) => (e.type === "Income" ? acc + e.amount : acc - e.amount), 0);
+    const cashInHand = (dayBook ?? []).reduce((acc, e) => {
+      if (!dayBookEntryAffectsCash(e)) return acc;
+      return e.type === "Income" ? acc + e.amount : acc - e.amount;
+    }, 0);
 
     return { receivable, payable, expensesToday, cashInHand };
   }, [dayBook, ledgerAccounts, ledgerEntries, todayKey]);
@@ -282,6 +304,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <HealthSnapshot />
+
       <FinanceSnapshot
         receivable={finance.receivable}
         payable={finance.payable}
@@ -294,7 +318,7 @@ export default function Dashboard() {
           <div className="text-sm font-medium text-[#64748b]">Monthly Report</div>
           <div className="mt-1 text-lg font-semibold text-[#0f172a]">{monthKey}</div>
         </div>
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-sm">
           <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
             <div className="text-xs font-semibold text-[#64748b]">Purchases</div>
             <div className="mt-2 text-lg font-semibold text-[#0f172a]">Rs. {purchasesThisMonth.toLocaleString()}</div>
@@ -306,6 +330,10 @@ export default function Dashboard() {
           <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
             <div className="text-xs font-semibold text-[#64748b]">Sales</div>
             <div className="mt-2 text-lg font-semibold text-[#0f172a]">Rs. {salesRevenueThisMonth.toLocaleString()}</div>
+          </div>
+          <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
+            <div className="text-xs font-semibold text-[#64748b]">Medicine / vaccine (month)</div>
+            <div className="mt-2 text-lg font-semibold text-[#0f172a]">Rs. {medicineMonth.toLocaleString()}</div>
           </div>
           <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
             <div className="text-xs font-semibold text-[#64748b]">Net profit (ERP)</div>

@@ -46,6 +46,10 @@ export async function resetBusinessDataLocal(opts: ResetOptions = {}) {
     () => db.payments.clear(),
     () => db.financialAccounts.clear(),
     () => db.consumptionLogs.clear(),
+    () => db.vaccines.clear(),
+    () => db.vaccineUsages.clear(),
+    () => db.doseReminders.clear(),
+    () => db.healthLogs.clear(),
     () => db.outbox.clear(),
   ];
   if (!keepUsersAndRoles) {

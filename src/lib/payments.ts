@@ -34,6 +34,7 @@ export async function postPayment(params: {
   const isReceive = params.direction === "Receive";
   const method: PaymentMethod = params.method ?? "Cash";
   const accountId = typeof params.accountId === "number" ? params.accountId : await getOrCreateDefaultCashAccountId();
+  const paymentUid = newUid();
 
   // Option A: Cash always affects Day Book cash-in-hand.
   const dayBook: Omit<DayBookEntry, "id"> = {
@@ -46,10 +47,14 @@ export async function postPayment(params: {
       : `Paid ${method} to ${party.name}${note ? ` (${note})` : ""}`,
     method,
     accountId,
+    affectsCash: true,
+    party: party.name,
+    entryStatus: "Paid",
+    refType: "payment",
+    refId: paymentUid,
   };
 
   return await db.transaction("rw", db.tables, async () => {
-    const paymentUid = newUid();
     const ledgerEntryId = await addLedgerEntry({
       accountId: params.partyAccountId,
       date,

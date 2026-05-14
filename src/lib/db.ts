@@ -68,6 +68,8 @@ export interface Sale {
   uid?: string;
   itemId: number;
   quantity: number;
+  /** Unit used for this line (may differ from inventory default). */
+  saleUnit?: string;
   totalPrice: number;
   /** Per-unit selling price for this sale (set at POS, not from inventory). */
   unitPrice?: number;
@@ -94,6 +96,10 @@ export interface Purchase {
   paymentStatus?: PaymentStatusErp;
 }
 
+export type DayBookPaymentMethod = 'Cash' | 'QR' | 'BankTransfer' | 'Credit';
+
+export type DayBookEntryStatusErp = 'Paid' | 'Unpaid' | 'Due' | 'Partial';
+
 export interface DayBookEntry {
   id?: number;
   uid?: string;
@@ -101,12 +107,77 @@ export interface DayBookEntry {
   description: string;
   amount: number;
   type: 'Income' | 'Expense';
-  category: 'Sale' | 'Purchase' | 'Transport' | 'Wage' | 'Other';
+  category: 'Sale' | 'Purchase' | 'Transport' | 'Wage' | 'Other' | 'Vaccine';
   accountId?: number; // FinancialAccount.id (Cash/Bank/QR)
-  method?: 'Cash' | 'QR' | 'BankTransfer';
+  method?: DayBookPaymentMethod;
+  /**
+   * When false, row is shown in the day book journal but excluded from cash opening/closing and account cash balance.
+   * Used for credit sales/purchases and other non-cash recognition lines.
+   */
+  affectsCash?: boolean;
+  /** Customer / supplier / party label for journal view. */
+  party?: string;
+  /** Ledger-style status for credit lines and settlements. */
+  entryStatus?: DayBookEntryStatusErp;
   /** Optional link back to domain entity (consumption, loss, sale id as string, etc.). */
   refType?: string;
   refId?: string;
+}
+
+/** Farm health — vaccine / medicine stock (separate from sellable inventory). */
+export interface Vaccine {
+  id?: number;
+  uid?: string;
+  name: string;
+  animalType: string;
+  doseType?: string;
+  unit: string;
+  qtyAvailable: number;
+  costPrice: number;
+  purchaseDate?: string; // ISO date
+  expiryDate?: string; // ISO date
+  reDoseIntervalValue?: number;
+  reDoseIntervalUnit?: 'days' | 'months';
+}
+
+export interface VaccineUsage {
+  id?: number;
+  uid?: string;
+  vaccineId: number;
+  qtyUsed: number;
+  animalBatch: string;
+  doseDate: string; // ISO
+  nextDoseDate?: string; // ISO date YYYY-MM-DD
+  nextIntervalValue?: number;
+  nextIntervalUnit?: 'days' | 'months';
+  notes?: string;
+  /** Total expense posted for this usage (qty * unit cost snapshot). */
+  expenseAmount?: number;
+}
+
+export type DoseReminderStatus = 'upcoming' | 'due_today' | 'overdue' | 'completed';
+
+export type ReminderCadence = 'daily' | 'weekly' | 'monthly';
+
+export interface DoseReminder {
+  id?: number;
+  uid?: string;
+  vaccineUsageId: number;
+  reminderDate: string; // YYYY-MM-DD
+  status: DoseReminderStatus;
+  cadence: ReminderCadence;
+  title?: string;
+  completedAt?: string;
+}
+
+export interface HealthLog {
+  id?: number;
+  uid?: string;
+  date: string; // ISO
+  animalBatch: string;
+  summary: string;
+  notes?: string;
+  vaccineUsageId?: number;
 }
 
 export interface LedgerAccount {
@@ -199,6 +270,10 @@ export class PatelaFarmDatabase extends Dexie {
   roles!: EntityTable<Role, 'id'>;
   outbox!: EntityTable<SyncEvent, "id">;
   consumptionLogs!: EntityTable<ConsumptionLog, "id">;
+  vaccines!: EntityTable<Vaccine, "id">;
+  vaccineUsages!: EntityTable<VaccineUsage, "id">;
+  doseReminders!: EntityTable<DoseReminder, "id">;
+  healthLogs!: EntityTable<HealthLog, "id">;
 
   constructor() {
     super('PatelaFarmDB_v2');
@@ -609,6 +684,71 @@ export class PatelaFarmDatabase extends Dexie {
         });
       });
 
+    this.version(16)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId, affectsCash',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, uid, name',
+        users: '++id, uid, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+        vaccines: '++id, uid, name, animalType, expiryDate',
+        vaccineUsages: '++id, uid, vaccineId, doseDate',
+        doseReminders: '++id, uid, reminderDate, status, vaccineUsageId',
+        healthLogs: '++id, uid, date, animalBatch',
+      })
+      .upgrade(async (tx) => {
+        const farmHealthPerms = ["farmHealth.vaccines", "farmHealth.doseSchedule", "farmHealth.healthLogs"];
+        await tx.table("roles").toCollection().modify((row: Record<string, unknown>) => {
+          const p = row.permissions;
+          if (!Array.isArray(p)) return;
+          if ((p as string[]).includes("*")) return;
+          const name = String(row.name ?? "").toLowerCase();
+          if (name === "admin" || name === "manager") {
+            row.permissions = [...new Set([...(p as string[]), ...farmHealthPerms])];
+          }
+        });
+        await tx.table("dayBook").toCollection().modify((row: Record<string, unknown>) => {
+          if (row.affectsCash === undefined) row.affectsCash = true;
+        });
+        await tx.table("doseReminders").toCollection().modify((row: Record<string, unknown>) => {
+          if (!row.cadence) row.cadence = "daily";
+        });
+      });
+
+    this.version(17)
+      .stores({
+        inventory: '++id, uid, name, quantity, itemType, active',
+        inventoryLosses: '++id, uid, itemId, lossType, date',
+        stockMovement: '++id, uid, itemId, type, reason, date',
+        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
+        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
+        dayBook: '++id, uid, time, type, category, accountId, affectsCash',
+        ledgerAccounts: '++id, uid, name, type',
+        ledgerEntries: '++id, uid, accountId, date',
+        payments: '++id, uid, partyAccountId, direction, date, accountId',
+        financialAccounts: '++id, uid, name, type',
+        roles: '++id, uid, name',
+        users: '++id, uid, username, roleId',
+        outbox: 'id, createdAt, pushedAt, entityType, entityId',
+        consumptionLogs: '++id, uid, itemId, category, date',
+        vaccines: '++id, uid, name, animalType, expiryDate',
+        vaccineUsages: '++id, uid, vaccineId, doseDate',
+        doseReminders: '++id, uid, reminderDate, status, vaccineUsageId',
+        healthLogs: '++id, uid, date, animalBatch',
+      })
+      .upgrade(async () => {
+        /* noop: keeps version chain monotonic for installs that already reached v17 */
+      });
+
     this.inventory = this.table('inventory');
     this.inventoryLosses = this.table("inventoryLosses");
     this.stockMovement = this.table('stockMovement');
@@ -623,6 +763,10 @@ export class PatelaFarmDatabase extends Dexie {
     this.roles = this.table('roles');
     this.outbox = this.table("outbox");
     this.consumptionLogs = this.table("consumptionLogs");
+    this.vaccines = this.table("vaccines");
+    this.vaccineUsages = this.table("vaccineUsages");
+    this.doseReminders = this.table("doseReminders");
+    this.healthLogs = this.table("healthLogs");
   }
 }
 

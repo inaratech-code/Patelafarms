@@ -97,6 +97,9 @@ export default function ConsumptionPage() {
           description: desc,
           method: "Cash" as const,
           accountId,
+          affectsCash: true,
+          entryStatus: "Paid" as const,
+          party: selected.name,
           refType: "consumption",
           refId: String(logUid),
         };

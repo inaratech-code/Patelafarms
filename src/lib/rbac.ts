@@ -21,6 +21,9 @@ export type PermissionId =
   | "people.suppliers"
   | "people.workers"
   | "people.users"
+  | "farmHealth.vaccines"
+  | "farmHealth.doseSchedule"
+  | "farmHealth.healthLogs"
   | "alerts"
   | "settings";
 
@@ -45,6 +48,9 @@ const KNOWN_PERMISSIONS = new Set<string>([
   "people.suppliers",
   "people.workers",
   "people.users",
+  "farmHealth.vaccines",
+  "farmHealth.doseSchedule",
+  "farmHealth.healthLogs",
   "alerts",
   "settings",
 ]);
@@ -58,6 +64,7 @@ const LEGACY_EXPANSIONS: Record<string, PermissionId[]> = {
   transactions: ["transactions.overview", "transactions.sales", "transactions.purchases", "transactions.expenses"],
   accounts: ["accounts.ledger", "accounts.dayBook", "accounts.payments", "accounts.accounts"],
   people: ["people.customers", "people.suppliers", "people.workers", "people.users"],
+  farmHealth: ["farmHealth.vaccines", "farmHealth.doseSchedule", "farmHealth.healthLogs"],
 
   // Older seed used these broad ids.
   orders: ["transactions.sales"],
@@ -119,6 +126,10 @@ export function requiredPermissionsForPath(pathname: string): PermissionId[] {
   if (p.startsWith("/daybook")) return ["accounts.dayBook"];
   if (p.startsWith("/payments")) return ["accounts.payments"];
   if (p.startsWith("/accounts")) return ["accounts.accounts"];
+
+  if (p.startsWith("/farm-health/vaccines")) return ["farmHealth.vaccines"];
+  if (p.startsWith("/farm-health/dose-schedule")) return ["farmHealth.doseSchedule"];
+  if (p.startsWith("/farm-health/health-logs")) return ["farmHealth.healthLogs"];
 
   if (p.startsWith("/customers")) return ["people.customers"];
   if (p.startsWith("/suppliers")) return ["people.suppliers"];
