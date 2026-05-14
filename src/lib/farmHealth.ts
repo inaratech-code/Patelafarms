@@ -2,7 +2,6 @@ import { db, type DoseReminderStatus, type ReminderCadence, type VaccineUsage } 
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
 import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { newUid } from "@/lib/uid";
-import { makeSyncEvent } from "@/lib/syncEvents";
 
 export function isoDateOnly(d: Date) {
   const y = d.getFullYear();
@@ -137,7 +136,6 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
     });
 
     const accountId = await getOrCreateDefaultCashAccountId();
-    const fin = await db.financialAccounts.get(accountId);
     const dayUid = newUid();
     const desc = `Vaccine / medicine: ${qty} ${vaccine.unit} ${vaccine.name} (${batch})`;
     const dayRow = {
@@ -157,48 +155,13 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
     };
     await db.dayBook.add(dayRow);
 
-    await db.outbox.add(
-      makeSyncEvent({
-        entityType: "daybook.entry",
-        entityId: dayUid,
-        op: "create",
-        payload: {
-          entry: {
-            ...dayRow,
-            account: fin?.uid ? { uid: fin.uid, name: fin.name, type: fin.type } : null,
-          },
-        },
-      })
-    );
-
     const cashLedgerId = await getOrCreateCashLedgerAccountId();
-    const ledgerEntryId = (await addLedgerEntry({
+    await addLedgerEntry({
       accountId: cashLedgerId,
       date: inp.doseDateIso,
       description: `Vaccine expense: ${vaccine.name} (${batch})`,
       debit: 0,
       credit: expenseAmount,
-    })) as number;
-    const cashAcct = await db.ledgerAccounts.get(cashLedgerId);
-    const entryRow = await db.ledgerEntries.get(ledgerEntryId);
-    if (cashAcct?.uid && entryRow?.uid) {
-      await db.outbox.add(
-        makeSyncEvent({
-          entityType: "ledger.entry",
-          entityId: entryRow.uid,
-          op: "create",
-          payload: {
-            account: { uid: cashAcct.uid, name: cashAcct.name, type: cashAcct.type },
-            entry: {
-              uid: entryRow.uid,
-              date: entryRow.date,
-              description: entryRow.description,
-              debit: entryRow.debit,
-              credit: entryRow.credit,
-            },
-          },
-        })
-      );
-    }
+    });
   });
 }

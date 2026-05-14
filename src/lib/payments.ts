@@ -30,6 +30,11 @@ export async function postPayment(params: {
 
   const party = await db.ledgerAccounts.get(params.partyAccountId);
   if (!party?.id) throw new Error("Party account not found");
+  let partyUid = party.uid;
+  if (!partyUid) {
+    partyUid = newUid();
+    await db.ledgerAccounts.update(party.id, { uid: partyUid });
+  }
 
   const isReceive = params.direction === "Receive";
   const method: PaymentMethod = params.method ?? "Cash";
@@ -65,6 +70,12 @@ export async function postPayment(params: {
 
     const dayBookUid = newUid();
     const dayBookEntryId = await db.dayBook.add({ ...dayBook, uid: dayBookUid });
+    const financialAccount = await db.financialAccounts.get(accountId);
+    let financialAccountUid = financialAccount?.uid;
+    if (financialAccount?.id && !financialAccountUid) {
+      financialAccountUid = newUid();
+      await db.financialAccounts.update(financialAccount.id, { uid: financialAccountUid });
+    }
 
     const payment: Omit<Payment, "id"> = {
       uid: paymentUid,
@@ -81,6 +92,22 @@ export async function postPayment(params: {
     };
 
     const paymentId = await db.payments.add(payment);
+    const ledgerEntry = await db.ledgerEntries.get(ledgerEntryId);
+    const partyAccountPayload = { uid: partyUid, name: party.name, type: party.type };
+    const financialAccountPayload =
+      financialAccount && financialAccountUid
+        ? { uid: financialAccountUid, name: financialAccount.name, type: financialAccount.type }
+        : null;
+    const dayBookPayload = { ...dayBook, uid: dayBookUid, account: financialAccountPayload };
+    const ledgerEntryPayload = ledgerEntry?.uid
+      ? {
+          uid: ledgerEntry.uid,
+          date: ledgerEntry.date,
+          description: ledgerEntry.description,
+          debit: ledgerEntry.debit,
+          credit: ledgerEntry.credit,
+        }
+      : null;
 
     // Add an outbox event to sync across devices.
     await db.outbox.add(
@@ -88,7 +115,23 @@ export async function postPayment(params: {
         entityType: "payment.posted",
         entityId: paymentUid,
         op: "create",
-        payload: { paymentId, ledgerEntryId, dayBookEntryId, payment, dayBookUid },
+        payload: {
+          paymentId,
+          ledgerEntryId,
+          dayBookEntryId,
+          dayBookUid,
+          payment: {
+            ...payment,
+            partyAccount: partyAccountPayload,
+            financialAccount: financialAccountPayload,
+            dayBook: dayBookPayload,
+            ledgerEntry: ledgerEntryPayload,
+          },
+          partyAccount: partyAccountPayload,
+          financialAccount: financialAccountPayload,
+          dayBook: dayBookPayload,
+          ledgerEntry: ledgerEntryPayload,
+        },
       })
     );
 
