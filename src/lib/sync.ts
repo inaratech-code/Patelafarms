@@ -337,13 +337,13 @@ export async function applyEvents(events: SyncEvent[]) {
         credit: number;
       }) => {
         const existingEntry = await db.ledgerEntries.where("uid").equals(params.uid).first();
-        if (existingEntry) return;
+        if (typeof existingEntry?.id === "number") return existingEntry.id;
 
         const last = await db.ledgerEntries.where("accountId").equals(params.accountId).sortBy("date");
         const prevBalance = last.length ? last[last.length - 1].balance : 0;
         const balance = prevBalance + (Number(params.debit) - Number(params.credit));
 
-        await db.ledgerEntries.add({
+        const id = await db.ledgerEntries.add({
           uid: params.uid,
           accountId: params.accountId,
           date: params.date,
@@ -352,6 +352,7 @@ export async function applyEvents(events: SyncEvent[]) {
           credit: Number(params.credit) || 0,
           balance,
         });
+        return typeof id === "number" ? id : undefined;
       };
 
       // Apply minimal event types we currently emit.
@@ -432,18 +433,78 @@ export async function applyEvents(events: SyncEvent[]) {
       if (e.entityType === "payment.posted" && e.op === "create") {
         const payment = asRecord(payload?.payment);
         const pUid = payment ? asString(payment.uid) : undefined;
-        if (pUid) {
+        if (pUid && payment) {
+          const partyAccount = asRecord(payload?.partyAccount) ?? asRecord(payment?.partyAccount);
+          const mappedPartyAccountId = await ensureLedgerAccountIdByUid(partyAccount);
+          const partyAccountId = mappedPartyAccountId ?? asNumber(payment.partyAccountId);
+
+          const financialAccount = asRecord(payload?.financialAccount) ?? asRecord(payment?.financialAccount);
+          const mappedFinancialAccountId = await ensureFinancialAccountIdByUid(financialAccount);
+          const accountId = mappedFinancialAccountId ?? asNumber(payment.accountId);
+
+          const ledgerEntry = asRecord(payload?.ledgerEntry) ?? asRecord(payment?.ledgerEntry);
+          const ledgerEntryUid = ledgerEntry ? asString(ledgerEntry.uid) : undefined;
+          let linkedLedgerEntryId = asNumber(payment.linkedLedgerEntryId);
+          if (ledgerEntryUid && typeof partyAccountId === "number") {
+            linkedLedgerEntryId = await addLedgerEntryWithBalance({
+              uid: ledgerEntryUid,
+              accountId: partyAccountId,
+              date: String(ledgerEntry?.date ?? ""),
+              description: String(ledgerEntry?.description ?? ""),
+              debit: Number(ledgerEntry?.debit ?? 0) || 0,
+              credit: Number(ledgerEntry?.credit ?? 0) || 0,
+            });
+          }
+
+          const dayBookUid = asString(payload?.dayBookUid);
+          const dayBookObj = asRecord(payload?.dayBook) ?? asRecord(payment?.dayBook);
+          let linkedDayBookEntryId = asNumber(payment.linkedDayBookEntryId);
+          if (dayBookObj) {
+            const dayBookRow: AnyRecord = { ...dayBookObj };
+            dayBookRow.uid = asString(dayBookRow.uid) ?? dayBookUid;
+            const dbUid = asString(dayBookRow.uid);
+            if (dbUid) {
+              const foundDayBook = await db.dayBook.where("uid").equals(dbUid).first();
+              if (typeof foundDayBook?.id === "number") {
+                linkedDayBookEntryId = foundDayBook.id;
+              } else {
+                const dayBookAccountId = await ensureFinancialAccountIdByUid(dayBookRow.account);
+                if (typeof dayBookAccountId === "number") dayBookRow.accountId = dayBookAccountId;
+                else if (typeof accountId === "number") dayBookRow.accountId = accountId;
+                delete dayBookRow.account;
+                delete dayBookRow.id;
+                if (dayBookRow.affectsCash === undefined) dayBookRow.affectsCash = true;
+                const id = await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
+                if (typeof id === "number") linkedDayBookEntryId = id;
+              }
+            }
+          }
+
           const found = await db.payments.where("uid").equals(pUid).first();
-          if (!found) await db.payments.add(payment as unknown as Omit<Payment, "id">);
-        }
-        // DayBook row is included in payload for payments.
-        const dayBookUid = asString(payload?.dayBookUid);
-        const dayBookObj = payment ? asRecord(payment.dayBook) : undefined;
-        const dayBookRow = dayBookUid && dayBookObj ? ({ uid: dayBookUid, ...dayBookObj } as AnyRecord) : undefined;
-        const dbUid = dayBookRow ? asString(dayBookRow.uid) : undefined;
-        if (dbUid) {
-          const found = await db.dayBook.where("uid").equals(dbUid).first();
-          if (!found) await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
+          if (!found && typeof partyAccountId === "number") {
+            const direction = payment.direction === "Pay" ? "Pay" : "Receive";
+            const partyType =
+              payment.partyType === "Supplier" || payment.partyType === "Worker"
+                ? (payment.partyType as Payment["partyType"])
+                : "Customer";
+            const method =
+              payment.method === "QR" || payment.method === "BankTransfer"
+                ? (payment.method as Payment["method"])
+                : "Cash";
+            await db.payments.add({
+              uid: pUid,
+              partyAccountId,
+              partyType,
+              direction,
+              amount: Number(payment.amount ?? 0) || 0,
+              date: String(payment.date ?? ""),
+              note: asString(payment.note),
+              method,
+              accountId,
+              linkedLedgerEntryId,
+              linkedDayBookEntryId,
+            } satisfies Omit<Payment, "id">);
+          }
         }
       }
       if (e.entityType === "ledger.account" && e.op === "create") {
