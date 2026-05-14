@@ -93,7 +93,6 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
   const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray()) || [];
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
   const doseReminders = useLiveQuery(() => db.doseReminders.toArray()) || [];
-  const vaccines = useLiveQuery(() => db.vaccines.toArray()) || [];
   const session = useMemo(() => getSession(), [pathname]);
   const role = useLiveQuery(async () => {
     const roleId = session?.roleId ?? 0;
@@ -107,8 +106,8 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
   }, [role, session?.roleId]);
 
   const alertBadge = useMemo(
-    () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines }),
-    [inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines]
+    () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders }),
+    [inventory, ledgerAccounts, ledgerEntries, doseReminders]
   );
 
   const storageKey = "pf.sidebar.v1";

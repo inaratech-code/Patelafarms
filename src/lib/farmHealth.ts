@@ -31,14 +31,14 @@ export function computeDoseReminderStatus(params: {
   return "upcoming";
 }
 
-/** True if expiry is within `withinDays` from today (inclusive), and not already past. */
-export function vaccineExpirySoon(v: { expiryDate?: string }, todayIso: string, withinDays: number): boolean {
-  const ex = v.expiryDate?.trim();
-  if (!ex) return false;
-  const end = new Date(`${ex}T23:59:59`);
+/** True if date entered (`purchaseDate`) falls within the past `withinDays` days through today (inclusive). */
+export function vaccineDateEnteredRecently(v: { purchaseDate?: string }, todayIso: string, withinDays: number): boolean {
+  const p = v.purchaseDate?.trim();
+  if (!p) return false;
   const start = new Date(`${todayIso}T12:00:00`);
-  const diff = (end.getTime() - start.getTime()) / 86400000;
-  return diff >= 0 && diff <= withinDays;
+  start.setDate(start.getDate() - withinDays);
+  const startKey = isoDateOnly(start);
+  return p >= startKey && p <= todayIso;
 }
 
 export async function refreshDoseReminderStatuses() {

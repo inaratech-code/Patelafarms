@@ -14,20 +14,46 @@ const cadenceOptions: Array<{ id: ReminderCadence; label: string }> = [
   { id: "monthly", label: "Monthly reminder" },
 ];
 
-function emptyVaccineForm(): Omit<Vaccine, "id"> {
+/** Add form uses string fields for numbers so the user can clear the field before typing. */
+type VaccineAddForm = {
+  uid: string;
+  name: string;
+  animalType: string;
+  doseType?: string;
+  unit: string;
+  qtyStr: string;
+  costStr: string;
+  dateEntered: string;
+  reDoseStr: string;
+  reDoseIntervalUnit: "days" | "months";
+};
+
+function emptyVaccineForm(): VaccineAddForm {
   return {
     uid: newUid(),
     name: "",
     animalType: "",
     doseType: "",
     unit: "pcs",
-    qtyAvailable: 0,
-    costPrice: 0,
-    purchaseDate: new Date().toISOString().slice(0, 10),
-    expiryDate: "",
-    reDoseIntervalValue: 0,
+    qtyStr: "",
+    costStr: "",
+    dateEntered: new Date().toISOString().slice(0, 10),
+    reDoseStr: "",
     reDoseIntervalUnit: "days",
   };
+}
+
+function parseNonNegative(s: string): number {
+  const n = Number(String(s).trim());
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function parseOptionalPositiveInt(s: string): number | undefined {
+  const t = String(s).trim();
+  if (t === "") return undefined;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.floor(n);
 }
 
 export default function VaccinesPage() {
@@ -66,16 +92,20 @@ export default function VaccinesPage() {
     if (!form.name.trim()) return alert("Name is required.");
     setSaving(true);
     try {
+      const qtyAvailable = parseNonNegative(form.qtyStr);
+      const costPrice = parseNonNegative(form.costStr);
+      const reDoseIntervalValue = parseOptionalPositiveInt(form.reDoseStr);
       const row: Omit<Vaccine, "id"> = {
-        ...form,
         uid: form.uid || newUid(),
         name: form.name.trim(),
         animalType: form.animalType.trim(),
         doseType: form.doseType?.trim() || undefined,
-        purchaseDate: form.purchaseDate || undefined,
-        expiryDate: form.expiryDate?.trim() || undefined,
-        reDoseIntervalValue: Number(form.reDoseIntervalValue) || undefined,
-        reDoseIntervalUnit: form.reDoseIntervalValue ? form.reDoseIntervalUnit : undefined,
+        unit: form.unit.trim() || "pcs",
+        qtyAvailable,
+        costPrice,
+        purchaseDate: form.dateEntered?.trim() || undefined,
+        reDoseIntervalValue,
+        reDoseIntervalUnit: reDoseIntervalValue ? form.reDoseIntervalUnit : undefined,
       };
       await db.vaccines.add(row);
       setShowAdd(false);
@@ -186,12 +216,10 @@ export default function VaccinesPage() {
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Qty available</label>
                 <input
-                  type="number"
-                  min={0}
-                  step="any"
+                  inputMode="decimal"
                   className="w-full px-3 py-2 border rounded-md"
-                  value={form.qtyAvailable}
-                  onChange={(e) => setForm({ ...form, qtyAvailable: Number(e.target.value) })}
+                  value={form.qtyStr}
+                  onChange={(e) => setForm({ ...form, qtyStr: e.target.value })}
                 />
               </div>
               <div>
@@ -205,45 +233,34 @@ export default function VaccinesPage() {
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Cost price (per unit)</label>
                 <input
-                  type="number"
-                  min={0}
-                  step="any"
+                  inputMode="decimal"
                   className="w-full px-3 py-2 border rounded-md"
-                  value={form.costPrice}
-                  onChange={(e) => setForm({ ...form, costPrice: Number(e.target.value) })}
+                  value={form.costStr}
+                  onChange={(e) => setForm({ ...form, costStr: e.target.value })}
                 />
               </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Purchase date</label>
+              <div className="sm:col-span-2">
+                <label className="block font-medium text-slate-700 mb-1">Date entered</label>
                 <input
                   type="date"
                   className="w-full px-3 py-2 border rounded-md"
-                  value={form.purchaseDate ?? ""}
-                  onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Expiry date</label>
-                <input
-                  type="date"
-                  className="w-full px-3 py-2 border rounded-md"
-                  value={form.expiryDate ?? ""}
-                  onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
+                  value={form.dateEntered}
+                  onChange={(e) => setForm({ ...form, dateEntered: e.target.value })}
                 />
               </div>
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Re-dose interval</label>
                 <div className="flex gap-2">
                   <input
-                    type="number"
-                    min={0}
+                    inputMode="numeric"
                     className="w-full px-3 py-2 border rounded-md"
-                    value={form.reDoseIntervalValue ?? ""}
-                    onChange={(e) => setForm({ ...form, reDoseIntervalValue: Number(e.target.value) })}
+                    placeholder="Optional"
+                    value={form.reDoseStr}
+                    onChange={(e) => setForm({ ...form, reDoseStr: e.target.value })}
                   />
                   <select
                     className="px-2 py-2 border rounded-md bg-white"
-                    value={form.reDoseIntervalUnit ?? "days"}
+                    value={form.reDoseIntervalUnit}
                     onChange={(e) => setForm({ ...form, reDoseIntervalUnit: e.target.value as "days" | "months" })}
                   >
                     <option value="days">days</option>
@@ -367,7 +384,7 @@ export default function VaccinesPage() {
               <th className="px-4 py-2 text-right font-semibold text-slate-600">Qty</th>
               <th className="px-4 py-2 text-left font-semibold text-slate-600">Unit</th>
               <th className="px-4 py-2 text-right font-semibold text-slate-600">Cost</th>
-              <th className="px-4 py-2 text-left font-semibold text-slate-600">Expiry</th>
+              <th className="px-4 py-2 text-left font-semibold text-slate-600">Date entered</th>
               <th className="px-4 py-2 text-right font-semibold text-slate-600">Action</th>
             </tr>
           </thead>
@@ -387,7 +404,7 @@ export default function VaccinesPage() {
                   <td className="px-4 py-2 text-right tabular-nums">{v.qtyAvailable}</td>
                   <td className="px-4 py-2 text-slate-600">{v.unit}</td>
                   <td className="px-4 py-2 text-right tabular-nums">Rs. {Number(v.costPrice ?? 0).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-slate-600">{v.expiryDate || "—"}</td>
+                  <td className="px-4 py-2 text-slate-600">{v.purchaseDate || "—"}</td>
                   <td className="px-4 py-2 text-right">
                     <button
                       type="button"

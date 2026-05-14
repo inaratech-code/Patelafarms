@@ -6,7 +6,7 @@ import { useEffect, useMemo } from "react";
 import { AlertCircle, Wallet, ArrowRight, Syringe } from "lucide-react";
 import { db } from "@/lib/db";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
-import { vaccineExpirySoon, refreshDoseReminderStatuses } from "@/lib/farmHealth";
+import { vaccineDateEnteredRecently, refreshDoseReminderStatuses } from "@/lib/farmHealth";
 import { localDayKey } from "@/lib/erp/metrics";
 
 export default function AlertsPage() {
@@ -48,8 +48,8 @@ export default function AlertsPage() {
       const limit = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       return rd > todayKey && rd <= limit;
     });
-    const exp = vaccines.filter((v) => vaccineExpirySoon(v, todayKey, 14));
-    return { urgent, soon, exp };
+    const recentEntered = vaccines.filter((v) => vaccineDateEnteredRecently(v, todayKey, 14));
+    return { urgent, soon, recentEntered };
   }, [doseReminders, vaccines, todayKey]);
 
   const pendingPayments = useMemo(() => {
@@ -155,13 +155,13 @@ export default function AlertsPage() {
             <div>
               <div className="text-sm font-medium text-slate-500">Farm health</div>
               <div className="mt-1 text-lg font-semibold text-slate-900">
-                {doseAlerts.urgent.length} urgent dose(s) · {doseAlerts.exp.length} expiry
+                {doseAlerts.urgent.length} urgent dose(s) · {doseAlerts.recentEntered.length} recent stock
               </div>
             </div>
             <Syringe className="w-6 h-6 text-sky-600" />
           </div>
           <div className="p-6 space-y-3 text-sm">
-            {doseAlerts.urgent.length === 0 && doseAlerts.soon.length === 0 && doseAlerts.exp.length === 0 ? (
+            {doseAlerts.urgent.length === 0 && doseAlerts.soon.length === 0 && doseAlerts.recentEntered.length === 0 ? (
               <div className="text-slate-500">No vaccine alerts.</div>
             ) : (
               <>
@@ -177,10 +177,10 @@ export default function AlertsPage() {
                     <span className="text-orange-800 shrink-0">{r.reminderDate}</span>
                   </div>
                 ))}
-                {doseAlerts.exp.map((v) => (
+                {doseAlerts.recentEntered.map((v) => (
                   <div key={v.id} className="flex justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
                     <span className="font-medium text-amber-900">{v.name}</span>
-                    <span className="text-amber-800 shrink-0">exp {v.expiryDate}</span>
+                    <span className="text-amber-800 shrink-0">entered {v.purchaseDate ?? "—"}</span>
                   </div>
                 ))}
               </>

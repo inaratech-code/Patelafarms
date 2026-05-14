@@ -1,4 +1,4 @@
-import type { DoseReminder, InventoryItem, LedgerAccount, LedgerEntry, Vaccine } from "@/lib/db";
+import type { DoseReminder, InventoryItem, LedgerAccount, LedgerEntry } from "@/lib/db";
 import { farmHealthNotificationCount } from "@/lib/farmHealthAlerts";
 import { localDayKey } from "@/lib/erp/metrics";
 
@@ -7,7 +7,6 @@ export function computeNavBadgeCount(params: {
   ledgerAccounts: LedgerAccount[];
   ledgerEntries: LedgerEntry[];
   doseReminders: DoseReminder[];
-  vaccines: Vaccine[];
 }) {
   const lowStock = params.inventory.filter((i) => {
     const th = i.reorderLevel ?? i.minStockThreshold ?? 0;
@@ -30,7 +29,6 @@ export function computeNavBadgeCount(params: {
   const todayKey = localDayKey(new Date());
   const farm = farmHealthNotificationCount({
     reminders: params.doseReminders,
-    vaccines: params.vaccines,
     todayKey,
   });
 

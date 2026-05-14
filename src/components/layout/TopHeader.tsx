@@ -38,10 +38,9 @@ export function TopHeader() {
   const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray()) || [];
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
   const doseReminders = useLiveQuery(() => db.doseReminders.toArray()) || [];
-  const vaccines = useLiveQuery(() => db.vaccines.toArray()) || [];
   const bellCount = useMemo(
-    () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines }),
-    [inventory, ledgerAccounts, ledgerEntries, doseReminders, vaccines]
+    () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders }),
+    [inventory, ledgerAccounts, ledgerEntries, doseReminders]
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [sessionTick, setSessionTick] = useState(0);

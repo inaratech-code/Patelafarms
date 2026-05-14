@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { db } from "@/lib/db";
 import { localDayKey } from "@/lib/erp/metrics";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
-import { vaccineExpirySoon } from "@/lib/farmHealth";
+import { vaccineDateEnteredRecently } from "@/lib/farmHealth";
 
 export function HealthSnapshot() {
   const vaccines = useLiveQuery(() => db.vaccines.toArray()) || [];
@@ -31,8 +31,8 @@ export function HealthSnapshot() {
     const upcoming = enriched
       .filter((x) => x.live === "upcoming" || x.live === "due_today")
       .slice(0, 6);
-    const exp = vaccines.filter((v) => vaccineExpirySoon(v, todayKey, 14)).slice(0, 4);
-    return { upcoming, overdue, alerts: exp };
+    const recent = vaccines.filter((v) => vaccineDateEnteredRecently(v, todayKey, 14)).slice(0, 4);
+    return { upcoming, overdue, alerts: recent };
   }, [reminders, usages, vaccines, todayKey]);
 
   return (
@@ -85,10 +85,10 @@ export function HealthSnapshot() {
           </ul>
         </div>
         <div className="md:col-span-2">
-          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">Expiry (14 days)</div>
+          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">Recent stock (entered in last 14 days)</div>
           <ul className="mt-2 flex flex-wrap gap-2">
             {alerts.length === 0 ? (
-              <li className="text-sm text-slate-500">No vaccine expiry warnings.</li>
+              <li className="text-sm text-slate-500">No items entered in the last 14 days.</li>
             ) : (
               alerts.map((v) => (
                 <li
@@ -96,7 +96,7 @@ export function HealthSnapshot() {
                   className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900"
                 >
                   {v.name}
-                  {v.expiryDate ? ` · exp ${v.expiryDate}` : ""}
+                  {v.purchaseDate ? ` · entered ${v.purchaseDate}` : ""}
                 </li>
               ))
             )}

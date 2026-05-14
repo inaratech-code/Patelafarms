@@ -1,10 +1,9 @@
-import type { DoseReminder, Vaccine } from "@/lib/db";
-import { computeDoseReminderStatus, vaccineExpirySoon } from "@/lib/farmHealth";
+import type { DoseReminder } from "@/lib/db";
+import { computeDoseReminderStatus } from "@/lib/farmHealth";
 
-/** Counts actionable farm-health notifications (dose + expiry). */
+/** Counts actionable farm-health notifications (dose reminders only; stock date is informational). */
 export function farmHealthNotificationCount(params: {
   reminders: DoseReminder[];
-  vaccines: Vaccine[];
   todayKey: string;
 }): number {
   let n = 0;
@@ -28,9 +27,6 @@ export function farmHealthNotificationCount(params: {
         })();
       if (in3) n += 1;
     }
-  }
-  for (const v of params.vaccines) {
-    if (vaccineExpirySoon(v, params.todayKey, 14)) n += 1;
   }
   return n;
 }
