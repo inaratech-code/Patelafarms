@@ -3,7 +3,7 @@
 import { Users, UserPlus, Trash2, ShieldPlus, X, Eye, EyeOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { db, type Role } from "@/lib/db";
 import { sha256Base64 } from "@/lib/auth";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/farm";
@@ -133,8 +133,8 @@ export default function UsersPage() {
   const roles = useLiveQuery(() => db.roles.toArray());
 
   const roleById = useMemo(() => {
-    const m = new Map<number, (typeof roles extends Array<infer R> ? R : any)>();
-    for (const r of roles ?? []) if (typeof r.id === "number") m.set(r.id, r as any);
+    const m = new Map<number, Role>();
+    for (const r of roles ?? []) if (typeof r.id === "number") m.set(r.id, r);
     return m;
   }, [roles]);
 
@@ -165,11 +165,11 @@ export default function UsersPage() {
   // Keep roleId defaulted when roles load.
   useEffect(() => {
     if (!firstRoleId) return;
-    setUserForm((v) => (v.roleId ? v : { ...v, roleId: firstRoleId }));
+    queueMicrotask(() => setUserForm((v) => (v.roleId ? v : { ...v, roleId: firstRoleId })));
   }, [firstRoleId]);
 
   useEffect(() => {
-    if (!showCreateUser) setShowUserPassword({ password: false, confirm: false });
+    if (!showCreateUser) queueMicrotask(() => setShowUserPassword({ password: false, confirm: false }));
   }, [showCreateUser]);
 
   const selectedRole = roleById.get(userForm.roleId);

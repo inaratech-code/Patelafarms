@@ -55,19 +55,23 @@ export function PaymentsClient() {
     const method = searchParams.get("method");
     const finId = Number(searchParams.get("financialAccountId") ?? 0);
 
-    if (d === "Receive" || d === "Pay") setDirection(d);
-    if (pt === "Customer" || pt === "Supplier" || pt === "Worker") setPartyType(pt);
-    if (Number.isFinite(id) && id > 0) setForm((prev) => ({ ...prev, partyAccountId: id }));
-    if (method === "Cash" || method === "QR" || method === "BankTransfer") setForm((prev) => ({ ...prev, method }));
-    if (Number.isFinite(finId) && finId > 0) setForm((prev) => ({ ...prev, accountId: finId }));
+    queueMicrotask(() => {
+      if (d === "Receive" || d === "Pay") setDirection(d);
+      if (pt === "Customer" || pt === "Supplier" || pt === "Worker") setPartyType(pt);
+      if (Number.isFinite(id) && id > 0) setForm((prev) => ({ ...prev, partyAccountId: id }));
+      if (method === "Cash" || method === "QR" || method === "BankTransfer") setForm((prev) => ({ ...prev, method }));
+      if (Number.isFinite(finId) && finId > 0) setForm((prev) => ({ ...prev, accountId: finId }));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Direction defaults: Receive -> Customer, Pay -> Supplier
   useEffect(() => {
-    setPartyType((prev) => {
-      if (direction === "Receive") return prev === "Supplier" ? "Customer" : prev;
-      return prev === "Customer" ? "Supplier" : prev;
+    queueMicrotask(() => {
+      setPartyType((prev) => {
+        if (direction === "Receive") return prev === "Supplier" ? "Customer" : prev;
+        return prev === "Customer" ? "Supplier" : prev;
+      });
     });
   }, [direction]);
 
@@ -86,12 +90,12 @@ export function PaymentsClient() {
   const selectedFinancialBalance = useMemo(() => {
     if (!selectedFinancial?.id) return 0;
     return computeAccountBalance({ accountId: selectedFinancial.id, dayBookEntries });
-  }, [dayBookEntries, selectedFinancial?.id]);
+  }, [dayBookEntries, selectedFinancial]);
 
   const outstanding = useMemo(() => {
     if (!selectedParty?.id) return 0;
     return computeBalance(ledgerEntries, selectedParty.id);
-  }, [ledgerEntries, selectedParty?.id]);
+  }, [ledgerEntries, selectedParty]);
 
   const outstandingLabel = useMemo(() => {
     if (!selectedParty?.id) return "-";

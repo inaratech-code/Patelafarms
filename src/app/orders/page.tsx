@@ -16,6 +16,15 @@ import { newUid } from "@/lib/uid";
 import { buildSupplierNameOptions } from "@/lib/supplierOptions";
 import { normalizeSaleUnit, SALE_UNIT_OPTIONS } from "@/lib/saleUnits";
 
+type LedgerOutAccount = { uid: string; name: string; type: string } | null;
+type LedgerOutEntry = {
+  uid: string;
+  date: string;
+  description: string;
+  debit: number;
+  credit: number;
+} | null;
+
 /** Digits + one dot; strips meaningless leading zeros on the whole part (keeps 0.5). */
 function normalizeSaleQtyInput(raw: string): string {
   let s = raw.replace(/[^\d.]/g, "");
@@ -83,19 +92,6 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<"Sales" | "Purchases">("Sales");
   const [showForm, setShowForm] = useState(false);
 
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    const itemId = Number(searchParams.get("itemId") ?? 0);
-    if (tab === "Sales" || tab === "sales") setActiveTab("Sales");
-    if (itemId > 0) {
-      setSaleForm((s) => ({ ...s, itemId }));
-      setShowForm(true);
-      setSaleUnitPriceStr("");
-      const inv = inventory.find((i) => i.id === itemId);
-      if (inv) setSaleUnit(normalizeSaleUnit(inv.unit, "pcs"));
-    }
-  }, [searchParams, inventory]);
-  
   const [saleQuantityStr, setSaleQuantityStr] = useState("1");
   const [saleUnit, setSaleUnit] = useState<string>("pcs");
   const [saleUnitPriceStr, setSaleUnitPriceStr] = useState("");
@@ -121,6 +117,21 @@ export default function OrdersPage() {
     lineItemDraft: { itemId: 0, quantity: 1 },
     lineItems: [] as Array<{ itemId: number; quantity: number }>,
   });
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const itemId = Number(searchParams.get("itemId") ?? 0);
+    queueMicrotask(() => {
+      if (tab === "Sales" || tab === "sales") setActiveTab("Sales");
+      if (itemId > 0) {
+        setSaleForm((s) => ({ ...s, itemId }));
+        setShowForm(true);
+        setSaleUnitPriceStr("");
+        const inv = inventory.find((i) => i.id === itemId);
+        if (inv) setSaleUnit(normalizeSaleUnit(inv.unit, "pcs"));
+      }
+    });
+  }, [searchParams, inventory]);
 
   const saleTotal = useMemo(() => {
     const item = inventory.find((i) => i.id === Number(saleForm.itemId));
@@ -220,7 +231,7 @@ export default function OrdersPage() {
       // 4. Day book: cash (affects cash) + credit (journal-only, does not affect cash balance)
       let dayBookId: number | null = null;
       let dayBookUid: string | null = null;
-      let dayBookEntry: Record<string, unknown> | null = null;
+      let dayBookEntry: Omit<DayBookEntry, "id"> | null = null;
       {
         const accountId = Number(saleForm.financialAccountId) || (await getOrCreateDefaultCashAccountId());
         const acct = await db.financialAccounts.get(accountId);
@@ -278,8 +289,8 @@ export default function OrdersPage() {
       // 5. Ledger entry (cash: cash ledger; credit: customer ledger)
       let ledgerAccountId: number | null = null;
       let ledgerEntryId: number | null = null;
-      let ledgerAccount: any = null;
-      let ledgerEntry: any = null;
+      let ledgerAccount: LedgerOutAccount = null;
+      let ledgerEntry: LedgerOutEntry = null;
       if (!isCredit && cashLedgerAccountId) {
         ledgerAccountId = cashLedgerAccountId;
         const acct = await db.ledgerAccounts.get(ledgerAccountId);
@@ -385,8 +396,8 @@ export default function OrdersPage() {
 
     await db.transaction('rw', db.tables, async () => {
       const purchaseBatchUid = newUid();
-      const purchaseRows: any[] = [];
-      const movementRows: any[] = [];
+      const purchaseRows: Array<Record<string, unknown>> = [];
+      const movementRows: Array<Record<string, unknown>> = [];
       const inventoryDeltas: Array<{ itemUid: string; delta: number }> = [];
 
       for (const li of lineItemsResolved) {
@@ -418,11 +429,11 @@ export default function OrdersPage() {
       // - Credit: creates payable in ledger + journal day book row (no cash impact).
       let dayBookId: number | null = null;
       let dayBookUid: string | null = null;
-      let dayBookEntry: any = null;
+      let dayBookEntry: Omit<DayBookEntry, "id"> | null = null;
       let ledgerAccountId: number | null = null;
       let ledgerEntryId: number | null = null;
-      let ledgerAccount: any = null;
-      let ledgerEntry: any = null;
+      let ledgerAccount: LedgerOutAccount = null;
+      let ledgerEntry: LedgerOutEntry = null;
       if (purchaseForm.paymentType === "Cash") {
         const accountId = Number(purchaseForm.financialAccountId) || (await getOrCreateDefaultCashAccountId());
         const acct = await db.financialAccounts.get(accountId);

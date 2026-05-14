@@ -42,33 +42,37 @@ export default function SettingsPage() {
   useEffect(() => {
     const fid = getFarmId();
     if (!fid) {
-      setFarmLink(null);
+      queueMicrotask(() => setFarmLink(null));
       return;
     }
     void (async () => {
       try {
-        setFarmLinkError("");
+        queueMicrotask(() => setFarmLinkError(""));
         await ensureSupabaseAuth();
         await ensureFarm();
         await ensureFarmJoinCode();
         const supabase = getSupabaseClient();
         const { data, error } = await supabase.from("farms").select("id, join_code").eq("id", fid).maybeSingle();
         if (error) {
-          setFarmLinkError(error.message);
+          queueMicrotask(() => setFarmLinkError(error.message));
           return;
         }
         const row = data as { id?: string; join_code?: string | null } | null;
         if (row?.id) {
-          setFarmLink({ id: String(row.id), joinCode: row.join_code ? String(row.join_code) : "" });
+          queueMicrotask(() =>
+            setFarmLink({ id: String(row.id), joinCode: row.join_code ? String(row.join_code) : "" })
+          );
         }
       } catch (e: unknown) {
-        setFarmLinkError(e instanceof Error ? e.message : "Could not load farm link info.");
+        queueMicrotask(() =>
+          setFarmLinkError(e instanceof Error ? e.message : "Could not load farm link info.")
+        );
       }
     })();
   }, []);
 
   useEffect(() => {
-    setSyncPaused(localStorage.getItem("pf.syncPaused") === "1");
+    queueMicrotask(() => setSyncPaused(localStorage.getItem("pf.syncPaused") === "1"));
     const onStorage = (e: StorageEvent) => {
       if (e.key === "pf.syncPaused") setSyncPaused(localStorage.getItem("pf.syncPaused") === "1");
     };
@@ -134,9 +138,10 @@ export default function SettingsPage() {
         const r = await syncNow();
         setSyncStatus(`Pushed ${r.pushed} · Pulled ${r.pulled}`);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setSyncStatus(e?.message ? `Sync failed: ${e.message}` : "Sync failed.");
+      const msg = e instanceof Error ? e.message : "";
+      setSyncStatus(msg ? `Sync failed: ${msg}` : "Sync failed.");
     } finally {
       setIsSyncing(false);
     }

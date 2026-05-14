@@ -58,8 +58,10 @@ export default function LossWastagePage() {
     if (!qpItemId || !inventory.length) return;
     const item = inventory.find((i) => i.id === qpItemId);
     if (!item?.id) return;
-    setForm((f) => ({ ...f, itemId: qpItemId, unit: item.unit ?? f.unit }));
-    setShowForm(true);
+    queueMicrotask(() => {
+      setForm((f) => ({ ...f, itemId: qpItemId, unit: item.unit ?? f.unit }));
+      setShowForm(true);
+    });
   }, [qpItemId, inventory]);
 
   const onSelectItem = (itemId: number) => {

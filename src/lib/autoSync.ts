@@ -3,11 +3,11 @@
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getFarmId } from "@/lib/farm";
 import { applyEvents, pullEvents, pushOutbox } from "@/lib/sync";
-import { db } from "@/lib/db";
+import { db, type SyncEventOp } from "@/lib/db";
 
 let _started = false;
 let _interval: number | null = null;
-let _channel: { unsubscribe?: () => any } | null = null;
+let _channel: { unsubscribe?: () => void } | null = null;
 let _isTicking = false;
 let _tickTimer: number | null = null;
 let _hooksInstalled = false;
@@ -82,12 +82,15 @@ export async function startAutoSync() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "events", filter: `farm_id=eq.${farmId}` },
-        async (payload: any) => {
+        async (payload: { new?: Record<string, unknown> }) => {
           try {
             if (localStorage.getItem("pf.resetting") === "1") return;
             if (localStorage.getItem("pf.syncPaused") === "1") return;
             const row = payload?.new;
             if (!row?.id) return;
+            const opRaw = row.op;
+            const op: SyncEventOp =
+              opRaw === "update" || opRaw === "delete" || opRaw === "create" ? opRaw : "create";
             await applyEvents([
               {
                 id: String(row.id),
@@ -95,7 +98,7 @@ export async function startAutoSync() {
                 createdAt: String(row.created_at ?? ""),
                 entityType: String(row.entity_type ?? ""),
                 entityId: String(row.entity_id ?? ""),
-                op: row.op,
+                op,
                 payload: row.payload,
               },
             ]);

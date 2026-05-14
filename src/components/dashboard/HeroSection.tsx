@@ -59,9 +59,11 @@ export function HeroSection(props: { isOnline: boolean }) {
   const [isOnline, setIsOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setIsMounted(true);
-    setNow(new Date());
-    setIsOnline(navigator.onLine);
+    queueMicrotask(() => {
+      setIsMounted(true);
+      setNow(new Date());
+      setIsOnline(navigator.onLine);
+    });
   }, []);
 
   const greeting = useMemo(() => {
@@ -86,7 +88,7 @@ export function HeroSection(props: { isOnline: boolean }) {
     if (cachedRaw) {
       try {
         const cached = JSON.parse(cachedRaw) as { tempC: number; code: number; fetchedAt: number };
-        if (cached && typeof cached.fetchedAt === "number") setWeather(cached);
+        if (cached && typeof cached.fetchedAt === "number") queueMicrotask(() => setWeather(cached));
       } catch {
         // ignore
       }
@@ -118,14 +120,16 @@ export function HeroSection(props: { isOnline: boolean }) {
           `&timezone=Asia%2FKathmandu`;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`Weather HTTP ${res.status}`);
-        const data = (await res.json()) as any;
+        const data = (await res.json()) as {
+          current?: { temperature_2m?: number; weather_code?: number };
+        };
         const tempC = Number(data?.current?.temperature_2m);
         const code = Number(data?.current?.weather_code);
         if (!Number.isFinite(tempC) || !Number.isFinite(code)) return;
 
         const next = { tempC, code, fetchedAt: Date.now() };
         if (cancelled) return;
-        setWeather(next);
+        queueMicrotask(() => setWeather(next));
         localStorage.setItem(storageKey, JSON.stringify(next));
       } catch {
         // ignore network errors; keep cached (if any)

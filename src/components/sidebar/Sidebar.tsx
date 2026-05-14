@@ -128,10 +128,12 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
       {}
     );
 
-    // Desktop default expanded; Mobile default expanded (labels visible).
-    setIsCollapsed(props.variant === "mobile" ? false : Boolean(existing.collapsed));
-    // Always start dropdown groups collapsed. Users explicitly open them via click.
-    setOpenGroups(defaultOpenGroups);
+    queueMicrotask(() => {
+      // Desktop default expanded; Mobile default expanded (labels visible).
+      setIsCollapsed(props.variant === "mobile" ? false : Boolean(existing.collapsed));
+      // Always start dropdown groups collapsed. Users explicitly open them via click.
+      setOpenGroups(defaultOpenGroups);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.variant]);
 

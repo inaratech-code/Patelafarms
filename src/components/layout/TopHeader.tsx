@@ -51,7 +51,7 @@ export function TopHeader() {
   const session = useMemo(() => getSession(), [pathname, sessionTick]);
 
   useEffect(() => {
-    setMenuOpen(false);
+    queueMicrotask(() => setMenuOpen(false));
   }, [pathname]);
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export function TopHeader() {
   useEffect(() => {
     // Show rotate indicator only when on mobile + landscape orientation.
     const mq = window.matchMedia("(max-width: 640px) and (orientation: landscape)");
-    const update = () => setIsLandscapeMobile(Boolean(mq.matches));
+    const update = () => queueMicrotask(() => setIsLandscapeMobile(Boolean(mq.matches)));
     update();
     mq.addEventListener?.("change", update);
     return () => mq.removeEventListener?.("change", update);

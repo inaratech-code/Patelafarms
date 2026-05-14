@@ -79,7 +79,7 @@ export function AppShell(props: { children: React.ReactNode }) {
     check();
 
     return () => {
-      for (const ev of events) window.removeEventListener(ev, markActive as any);
+      for (const ev of events) window.removeEventListener(ev, markActive as EventListener);
       document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(interval);
     };
@@ -93,7 +93,7 @@ export function AppShell(props: { children: React.ReactNode }) {
       window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
       return; // keep UI blank; avoid flashing dashboard before redirect
     }
-    setChecked(true);
+    queueMicrotask(() => setChecked(true));
   }, [isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
 
   useEffect(() => {

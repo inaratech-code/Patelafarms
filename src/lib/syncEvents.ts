@@ -11,7 +11,7 @@ export function makeSyncEvent(params: {
   entityType: string;
   entityId: string;
   op: SyncEventOp;
-  payload: any;
+  payload: unknown;
 }): SyncEvent {
   return {
     id: uuidv4(),

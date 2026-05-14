@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { db, type ConsumptionCategory } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
@@ -19,6 +19,12 @@ const categories: Array<{ id: ConsumptionCategory; label: string }> = [
 
 export default function ConsumptionPage() {
   const searchParams = useSearchParams();
+  const itemParam = searchParams.get("itemId") ?? "";
+  return <ConsumptionPageInner key={itemParam} />;
+}
+
+function ConsumptionPageInner() {
+  const searchParams = useSearchParams();
   const itemIdFromUrl = Number(searchParams.get("itemId") ?? 0);
 
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
@@ -27,11 +33,7 @@ export default function ConsumptionPage() {
     [inventory]
   );
 
-  const [itemId, setItemId] = useState(itemIdFromUrl);
-
-  useEffect(() => {
-    if (itemIdFromUrl > 0) setItemId(itemIdFromUrl);
-  }, [itemIdFromUrl]);
+  const [itemId, setItemId] = useState(() => (itemIdFromUrl > 0 ? itemIdFromUrl : 0));
   const [qtyStr, setQtyStr] = useState("1");
   const [category, setCategory] = useState<ConsumptionCategory>("feed_used");
   const [notes, setNotes] = useState("");

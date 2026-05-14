@@ -32,7 +32,7 @@ export default function StockMovementPage() {
 
   useEffect(() => {
     if (!qpItemId) return;
-    setForm((f) => ({ ...f, itemId: qpItemId }));
+    queueMicrotask(() => setForm((f) => ({ ...f, itemId: qpItemId })));
   }, [qpItemId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
