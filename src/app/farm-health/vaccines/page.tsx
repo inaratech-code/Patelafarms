@@ -38,7 +38,7 @@ function emptyVaccineForm(): VaccineAddForm {
     qtyStr: "",
     costStr: "",
     dateEntered: new Date().toISOString().slice(0, 10),
-    reDoseStr: "",
+    reDoseStr: "21",
     reDoseIntervalUnit: "days",
   };
 }
@@ -48,11 +48,12 @@ function parseNonNegative(s: string): number {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-function parseOptionalPositiveInt(s: string): number | undefined {
+/** Whole number > 0, or null if missing/invalid. */
+function parseRequiredReDoseInterval(s: string): number | null {
   const t = String(s).trim();
-  if (t === "") return undefined;
+  if (t === "") return null;
   const n = Number(t);
-  if (!Number.isFinite(n) || n <= 0) return undefined;
+  if (!Number.isFinite(n) || n <= 0) return null;
   return Math.floor(n);
 }
 
@@ -90,11 +91,14 @@ export default function VaccinesPage() {
   const saveVaccine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return alert("Name is required.");
+    const reDoseIntervalValue = parseRequiredReDoseInterval(form.reDoseStr);
+    if (reDoseIntervalValue == null) {
+      return alert("Re-dose interval is required. Enter a whole number greater than 0.");
+    }
     setSaving(true);
     try {
       const qtyAvailable = parseNonNegative(form.qtyStr);
       const costPrice = parseNonNegative(form.costStr);
-      const reDoseIntervalValue = parseOptionalPositiveInt(form.reDoseStr);
       const row: Omit<Vaccine, "id"> = {
         uid: form.uid || newUid(),
         name: form.name.trim(),
@@ -105,7 +109,7 @@ export default function VaccinesPage() {
         costPrice,
         purchaseDate: form.dateEntered?.trim() || undefined,
         reDoseIntervalValue,
-        reDoseIntervalUnit: reDoseIntervalValue ? form.reDoseIntervalUnit : undefined,
+        reDoseIntervalUnit: form.reDoseIntervalUnit,
       };
       await db.vaccines.add(row);
       setShowAdd(false);
@@ -249,12 +253,14 @@ export default function VaccinesPage() {
                 />
               </div>
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Re-dose interval</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Re-dose interval <span className="text-red-600 font-semibold">*</span>
+                </label>
                 <div className="flex gap-2">
                   <input
                     inputMode="numeric"
+                    required
                     className="w-full px-3 py-2 border rounded-md"
-                    placeholder="Optional"
                     value={form.reDoseStr}
                     onChange={(e) => setForm({ ...form, reDoseStr: e.target.value })}
                   />
