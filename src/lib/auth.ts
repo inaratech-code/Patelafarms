@@ -79,6 +79,9 @@ export async function loginWithPassword(params: { username: string; password: st
   const hash = await sha256Base64(password);
   if (hash !== user.passwordHash) throw new Error("Invalid password");
 
+  const role = await db.roles.get(user.roleId);
+  if (!role?.id) throw new Error("User role is missing. Sync this device and try again.");
+
   setSession({ userId: user.id, username: user.username, roleId: user.roleId });
 
   void (async () => {
