@@ -37,16 +37,19 @@ export function HealthSnapshot() {
 
   return (
     <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm overflow-hidden">
-      <div className="p-6 border-b border-[#e2e8f0] flex items-center justify-between">
-        <div>
+      <div className="p-4 sm:p-6 border-b border-[#e2e8f0] flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <div className="text-sm font-medium text-[#64748b]">Farm health</div>
-          <div className="mt-1 text-lg font-semibold text-[#0f172a]">Doses &amp; stock alerts</div>
+          <div className="mt-1 text-base sm:text-lg font-semibold text-[#0f172a]">Doses &amp; stock alerts</div>
         </div>
-        <Link href="/farm-health/dose-schedule" className="text-sm font-semibold text-[#0871b3] hover:underline">
+        <Link
+          href="/farm-health/dose-schedule"
+          className="text-sm font-semibold text-[#0871b3] hover:underline shrink-0 self-start sm:self-center"
+        >
           Schedule
         </Link>
       </div>
-      <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">Upcoming / due</div>
           <ul className="mt-2 space-y-2">

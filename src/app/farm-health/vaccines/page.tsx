@@ -2,8 +2,9 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { Plus, Syringe, X } from "lucide-react";
+import { Plus, Syringe } from "lucide-react";
+import { FarmHealthModal } from "@/components/farm-health/FarmHealthModal";
+import { FarmHealthSubnav } from "@/components/farm-health/FarmHealthSubnav";
 import { db, type ReminderCadence, type Vaccine } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { recordVaccineUsage } from "@/lib/farmHealth";
@@ -152,30 +153,25 @@ export default function VaccinesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="text-sm text-slate-500">
-            <Link href="/farm-health/dose-schedule" className="text-primary font-medium hover:underline">
-              Dose schedule
-            </Link>
-            <span className="mx-2">·</span>
-            <Link href="/farm-health/health-logs" className="text-primary font-medium hover:underline">
-              Health logs
-            </Link>
-          </div>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900 flex items-center gap-2">
-            <Syringe className="w-7 h-7 text-primary" />
-            Vaccines & medicine stock
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="min-w-0">
+          <FarmHealthSubnav current="vaccines" />
+          <h1 className="mt-2 text-xl sm:text-2xl font-semibold text-slate-900 flex items-center gap-2">
+            <Syringe className="w-6 h-6 sm:w-7 sm:h-7 text-primary shrink-0" />
+            <span className="min-w-0">Vaccines & medicine stock</span>
           </h1>
-          <p className="mt-1 text-sm text-slate-500">Consumable health inventory — record usage to post expenses and schedule next doses.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Consumable health inventory — record usage to post expenses and schedule next doses.
+          </p>
         </div>
+
         <button
           type="button"
           onClick={() => {
             setForm(emptyVaccineForm());
             setShowAdd(true);
           }}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 shrink-0"
         >
           <Plus className="w-5 h-5" />
           Add vaccine / medicine
@@ -183,14 +179,7 @@ export default function VaccinesPage() {
       </div>
 
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto border border-slate-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-              <div className="font-semibold text-slate-900">New vaccine / medicine</div>
-              <button type="button" onClick={() => setShowAdd(false)} className="p-2 rounded-md hover:bg-slate-50" aria-label="Close">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <FarmHealthModal title="New vaccine / medicine" onClose={() => setShowAdd(false)} maxWidth="lg">
             <form onSubmit={saveVaccine} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div className="sm:col-span-2">
                 <label className="block font-medium text-slate-700 mb-1">Name</label>
@@ -285,19 +274,11 @@ export default function VaccinesPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </FarmHealthModal>
       )}
 
       {usageOpen && selectedVax?.id && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full border border-slate-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-              <div className="font-semibold text-slate-900">Record usage — {selectedVax.name}</div>
-              <button type="button" onClick={() => setUsageOpen(false)} className="p-2 rounded-md hover:bg-slate-50" aria-label="Close">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <FarmHealthModal title={`Record usage — ${selectedVax.name}`} onClose={() => setUsageOpen(false)}>
             <form onSubmit={submitUsage} className="p-4 space-y-3 text-sm">
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Quantity used</label>
@@ -378,11 +359,55 @@ export default function VaccinesPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </FarmHealthModal>
       )}
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="md:hidden divide-y divide-slate-100">
+          {vaccines.length === 0 ? (
+            <div className="p-6 text-center text-sm text-slate-500">
+              No vaccines yet. Add chicken vaccine, fish medicine, supplements, etc.
+            </div>
+          ) : (
+            vaccines.map((v) => (
+              <div key={v.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-900 break-words">{v.name}</div>
+                    <div className="text-sm text-slate-500 mt-0.5">
+                      {[v.animalType, v.doseType].filter(Boolean).join(" · ") || "—"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!v.id || v.qtyAvailable <= 0}
+                    onClick={() => v.id && openUsage(v.id)}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-sm font-semibold hover:bg-primary/15 disabled:opacity-40"
+                  >
+                    Use
+                  </button>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-slate-500">Qty</dt>
+                    <dd className="font-medium tabular-nums">
+                      {v.qtyAvailable} {v.unit}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Cost</dt>
+                    <dd className="font-medium tabular-nums">Rs. {Number(v.costPrice ?? 0).toLocaleString()}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-xs text-slate-500">Date entered</dt>
+                    <dd className="text-slate-700">{v.purchaseDate || "—"}</dd>
+                  </div>
+                </dl>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
@@ -428,6 +453,7 @@ export default function VaccinesPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
