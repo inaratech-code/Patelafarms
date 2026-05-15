@@ -1,8 +1,9 @@
-import { db, type DoseReminderStatus, type ReminderCadence, type VaccineUsage } from "@/lib/db";
+import { db, type DoseReminder, type DoseReminderStatus, type ReminderCadence, type VaccineUsage } from "@/lib/db";
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
 import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
+import { enqueueFarmHealthUsageOutbox } from "@/lib/farmHealthSync";
 
 export function isoDateOnly(d: Date) {
   const y = d.getFullYear();
@@ -68,7 +69,7 @@ export type RecordVaccineUsageInput = {
 
 /**
  * Records vaccine usage: stock reduction, day book + cash ledger expense, health log, next-dose reminder.
- * Farm-health tables are local-only (no sync outbox) until cloud schema supports them.
+ * Posts day book + ledger via outbox; vaccine stock / reminders sync via farmHealth.* events.
  */
 export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
   const qty = Number(inp.qtyUsed);
@@ -93,7 +94,9 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
         ? addDurationToDate(doseDay, nextV, nextU)
         : undefined;
 
-    await db.vaccines.update(vaccine.id, { qtyAvailable: available - qty });
+    const nextQty = available - qty;
+    await db.vaccines.update(vaccine.id, { qtyAvailable: nextQty });
+    const vaccineAfter = { ...vaccine, qtyAvailable: nextQty };
 
     const usageUid = newUid();
     const usage: Omit<VaccineUsage, "id"> = {
@@ -109,6 +112,9 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
       expenseAmount,
     };
     const usageId = (await db.vaccineUsages.add(usage)) as number;
+    const usageRow = { ...usage, id: usageId };
+
+    let reminderRecord: DoseReminder | undefined;
 
     if (nextDoseDate) {
       const initialStatus = computeDoseReminderStatus({
@@ -116,24 +122,35 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
         persisted: "upcoming",
       });
       const reminderUid = newUid();
-      await db.doseReminders.add({
+      reminderRecord = {
         uid: reminderUid,
         vaccineUsageId: usageId,
         reminderDate: nextDoseDate,
         status: initialStatus,
         cadence,
         title: `${vaccine.name} — ${batch}`,
-      });
+      };
+      const rid = (await db.doseReminders.add(reminderRecord)) as number;
+      reminderRecord = { ...reminderRecord, id: rid };
     }
 
     const logUid = newUid();
-    await db.healthLogs.add({
+    const healthLogRecord = {
       uid: logUid,
       date: inp.doseDateIso,
       animalBatch: batch,
       summary: `Vaccine / medicine: ${vaccine.name} (${qty} ${vaccine.unit})`,
       notes: inp.notes?.trim() || undefined,
       vaccineUsageId: usageId,
+    };
+    const logId = (await db.healthLogs.add(healthLogRecord)) as number;
+    const healthLogRow = { ...healthLogRecord, id: logId };
+
+    await enqueueFarmHealthUsageOutbox({
+      vaccine: vaccineAfter,
+      usage: usageRow,
+      reminder: reminderRecord,
+      healthLog: healthLogRow,
     });
 
     const accountId = await getOrCreateDefaultCashAccountId();

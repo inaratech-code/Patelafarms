@@ -65,7 +65,14 @@ export default function StockMovementPage() {
             entityType: "stock.movement",
             entityId: movement.uid!,
             op: "create",
-            payload: { id, movement },
+            payload: {
+              id,
+              movement: { ...movement, itemUid: item.uid },
+              inventoryDelta: {
+                itemUid: item.uid,
+                delta: movementType === "IN" ? qty : -qty,
+              },
+            },
           })
         );
       });

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CalendarClock } from "lucide-react";
 import { db, type DoseReminderStatus } from "@/lib/db";
 import { refreshDoseReminderStatuses } from "@/lib/farmHealth";
+import { enqueueReminderOutbox } from "@/lib/farmHealthSync";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
 
 type Filter = "all" | DoseReminderStatus;
@@ -42,10 +43,13 @@ export default function DoseSchedulePage() {
   }, [reminders, usages, vaccines, filter]);
 
   const markComplete = async (id: number) => {
-    await db.doseReminders.update(id, {
-      status: "completed",
-      completedAt: new Date().toISOString(),
-    });
+    const existing = await db.doseReminders.get(id);
+    if (!existing?.uid) return;
+    const completedAt = new Date().toISOString();
+    const updated: typeof existing = { ...existing, status: "completed", completedAt };
+    await db.doseReminders.update(id, { status: "completed", completedAt });
+    const usage = await db.vaccineUsages.get(existing.vaccineUsageId);
+    if (usage?.uid) await enqueueReminderOutbox(updated, usage.uid);
   };
 
   return (

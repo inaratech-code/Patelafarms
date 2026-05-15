@@ -12,13 +12,15 @@ let _isTicking = false;
 let _tickTimer: number | null = null;
 let _hooksInstalled = false;
 
+const POLL_MS = 10_000;
+const DEBOUNCE_MS = 500;
+
 function scheduleSoon() {
   if (_tickTimer != null) return;
-  // Debounce rapid writes (e.g. purchase creates multiple events) into one push/pull.
   _tickTimer = window.setTimeout(() => {
     _tickTimer = null;
     void tick();
-  }, 800);
+  }, DEBOUNCE_MS);
 }
 
 function canUseSupabase() {
@@ -41,11 +43,34 @@ async function tick() {
     _isTicking = true;
     await pushOutbox();
     await pullEvents();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("pf-sync-complete"));
+    }
   } catch (e) {
     console.warn("autoSync tick failed:", e);
   } finally {
     _isTicking = false;
   }
+}
+
+function stopRealtimeChannel() {
+  try {
+    _channel?.unsubscribe?.();
+  } catch {
+    /* ignore */
+  }
+  _channel = null;
+}
+
+/** Tear down and allow startAutoSync to run again (e.g. after linking a farm). */
+export function restartAutoSync() {
+  stopRealtimeChannel();
+  if (_interval != null) {
+    window.clearInterval(_interval);
+    _interval = null;
+  }
+  _started = false;
+  void startAutoSync();
 }
 
 export async function startAutoSync() {
@@ -57,15 +82,12 @@ export async function startAutoSync() {
   try {
     if (localStorage.getItem("pf.syncPaused") === "1") return;
     await ensureSupabaseAuth();
-    // Important: do NOT create a new farm automatically.
-    // Auto-sync should only run after this browser is linked to an existing farm id.
     const farmId = getFarmId();
     if (!farmId) return;
-    _started = true;
 
+    _started = true;
     const supabase = getSupabaseClient();
 
-    // Auto-push: any new local outbox event triggers a debounced sync.
     if (!_hooksInstalled) {
       _hooksInstalled = true;
       db.outbox.hook("creating", () => scheduleSoon());
@@ -76,7 +98,7 @@ export async function startAutoSync() {
       });
     }
 
-    // Realtime: apply new events immediately without requiring manual Sync.
+    stopRealtimeChannel();
     _channel = supabase
       .channel(`pf-events-${farmId}`)
       .on(
@@ -102,19 +124,25 @@ export async function startAutoSync() {
                 payload: row.payload,
               },
             ]);
+            window.dispatchEvent(new CustomEvent("pf-sync-complete"));
           } catch (e) {
             console.warn("realtime apply failed:", e);
+            scheduleSoon();
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("autoSync realtime:", status);
+          scheduleSoon();
+        }
+      });
 
-    // Background polling: covers missed realtime events / offline periods.
-    _interval = window.setInterval(() => void tick(), 25_000);
-    // First sync quickly after boot.
+    if (_interval != null) window.clearInterval(_interval);
+    _interval = window.setInterval(() => void tick(), POLL_MS);
     void tick();
   } catch (e) {
     console.warn("startAutoSync failed:", e);
+    _started = false;
   }
 }
-

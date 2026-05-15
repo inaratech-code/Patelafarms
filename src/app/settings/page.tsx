@@ -14,6 +14,7 @@ import { db, type User } from "@/lib/db";
 import { changePassword, clearSession, getSession } from "@/lib/auth";
 import { getOrCreateDeviceId } from "@/lib/device";
 import { getSyncState } from "@/lib/syncState";
+import { restartAutoSync } from "@/lib/autoSync";
 import { syncNow, pushOutbox, pullEvents } from "@/lib/sync";
 import { getFarmId, ensureFarm, ensureFarmJoinCode } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
@@ -209,6 +210,7 @@ export default function SettingsPage() {
                     localStorage.removeItem("pf.syncPaused");
                     setSyncPaused(false);
                     setSyncStatus("Sync resumed.");
+                    void restartAutoSync();
                   }}
                 >
                   Resume sync

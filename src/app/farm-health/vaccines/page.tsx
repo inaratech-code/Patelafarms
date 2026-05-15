@@ -7,6 +7,7 @@ import { Plus, Syringe, X } from "lucide-react";
 import { db, type ReminderCadence, type Vaccine } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { recordVaccineUsage } from "@/lib/farmHealth";
+import { enqueueVaccineOutbox } from "@/lib/farmHealthSync";
 
 const cadenceOptions: Array<{ id: ReminderCadence; label: string }> = [
   { id: "daily", label: "Daily reminder" },
@@ -111,7 +112,8 @@ export default function VaccinesPage() {
         reDoseIntervalValue,
         reDoseIntervalUnit: form.reDoseIntervalUnit,
       };
-      await db.vaccines.add(row);
+      const id = (await db.vaccines.add(row)) as number;
+      await enqueueVaccineOutbox({ ...row, id }, "create");
       setShowAdd(false);
       setForm(emptyVaccineForm());
     } finally {

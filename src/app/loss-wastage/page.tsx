@@ -149,8 +149,11 @@ export default function LossWastagePage() {
               lossId,
               loss: { ...lossRow, itemUid: item.uid },
               movement: { uid: movementUid, itemUid: item.uid, delta: -qty, reason: form.lossType },
-              dayBookUid: dayUid,
-              dayBookId,
+              inventoryDelta: { itemUid: item.uid, delta: -qty },
+              dayBook: {
+                ...day,
+                account: acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null,
+              },
               account: acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null,
             },
           }),

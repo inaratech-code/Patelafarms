@@ -2,9 +2,13 @@
 
 import {
   db,
+  type ConsumptionLog,
   type DayBookEntry,
+  type DoseReminder,
   type FinancialAccount,
+  type HealthLog,
   type InventoryItem,
+  type InventoryLoss,
   type LedgerAccount,
   type Payment,
   type Purchase,
@@ -14,7 +18,10 @@ import {
   type SyncEvent,
   type SyncEventOp,
   type User,
+  type Vaccine,
+  type VaccineUsage,
 } from "@/lib/db";
+import { enqueueFarmHealthOutboxBackfillOnce } from "@/lib/farmHealthSync";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getSyncState, setSyncState } from "@/lib/syncState";
 import { ensureFarm, getFarmId } from "@/lib/farm";
@@ -211,6 +218,7 @@ export async function pushOutbox() {
   await ensureSupabaseAuth();
   await ensureFarm();
   await enqueueRoleUserOutboxBackfillOnce();
+  await enqueueFarmHealthOutboxBackfillOnce();
   await publishAllFarmCloudLoginsFromDexie();
   // Dexie rejects .equals(undefined); pending rows have no pushedAt (or empty).
   const pending = await db.outbox.filter((e) => !e.pushedAt).toArray();
@@ -264,22 +272,33 @@ export async function pullEvents() {
   await ensureSupabaseAuth();
   const farmId = await ensureFarm();
   const state = getSyncState();
-  const since = state.lastPulledAt;
+  let since = state.lastPulledAt;
+  let totalPulled = 0;
 
-  let query = supabase.from("events").select("*").eq("farm_id", farmId).order("created_at", { ascending: true }).limit(500);
-  if (since) query = query.gt("created_at", since);
+  // Page through events so new devices catch up even when >500 changes exist.
+  for (;;) {
+    let query = supabase
+      .from("events")
+      .select("*")
+      .eq("farm_id", farmId)
+      .order("created_at", { ascending: true })
+      .limit(500);
+    if (since) query = query.gt("created_at", since);
 
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = (data ?? []).map(fromSupabaseRow);
-  if (rows.length === 0) return { pulled: 0 };
+    const { data, error } = await query;
+    if (error) throw error;
+    const rows = (data ?? []).map(fromSupabaseRow);
+    if (rows.length === 0) break;
 
-  await applyEvents(rows);
+    await applyEvents(rows);
+    totalPulled += rows.length;
+    since = rows[rows.length - 1].createdAt;
+    setSyncState({ lastPulledAt: since });
 
-  const last = rows[rows.length - 1].createdAt;
-  setSyncState({ lastPulledAt: last });
+    if (rows.length < 500) break;
+  }
 
-  return { pulled: rows.length };
+  return { pulled: totalPulled };
 }
 
 export async function applyEvents(events: SyncEvent[]) {
@@ -476,7 +495,22 @@ export async function applyEvents(events: SyncEvent[]) {
         const uid = movement ? asString(movement.uid) : undefined;
         if (uid) {
           const found = await db.stockMovement.where("uid").equals(uid).first();
-          if (!found) await db.stockMovement.add(movement as unknown as Omit<StockMovement, "id">);
+          if (!found) {
+            let itemId = movement ? asNumber(movement.itemId) : undefined;
+            const itemUid = movement ? asString(movement.itemUid) : undefined;
+            if (itemUid) {
+              const inv = await db.inventory.where("uid").equals(itemUid).first();
+              if (inv?.id) itemId = inv.id;
+            }
+            await db.stockMovement.add({ ...(movement as AnyRecord), itemId: itemId ?? 0 } as unknown as Omit<StockMovement, "id">);
+          }
+        }
+        const invDelta = asRecord(payload?.inventoryDelta);
+        const itemUid = invDelta ? asString(invDelta.itemUid) : undefined;
+        const delta = invDelta ? asNumber(invDelta.delta) : undefined;
+        if (itemUid && typeof delta === "number") {
+          const inv = await db.inventory.where("uid").equals(itemUid).first();
+          if (inv?.id) await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
         }
       }
       if (e.entityType === "order.sale" && e.op === "create") {
@@ -581,6 +615,193 @@ export async function applyEvents(events: SyncEvent[]) {
           const inv = await db.inventory.where("uid").equals(itemUid).first();
           if (inv?.id) {
             await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
+          }
+        }
+      }
+
+      if (e.entityType === "inventory.consumption" && e.op === "create") {
+        const log = asRecord(payload?.log);
+        const logUid = log ? asString(log.uid) : undefined;
+        if (logUid) {
+          const found = await db.consumptionLogs.where("uid").equals(logUid).first();
+          if (!found) {
+            let itemId = log ? asNumber(log.itemId) : undefined;
+            const itemUid = log ? asString(log.itemUid) : undefined;
+            if (itemUid) {
+              const inv = await db.inventory.where("uid").equals(itemUid).first();
+              if (inv?.id) itemId = inv.id;
+            }
+            if (typeof itemId === "number") {
+              await db.consumptionLogs.add({ ...(log as AnyRecord), itemId } as unknown as Omit<ConsumptionLog, "id">);
+            }
+          }
+        }
+        const movement = asRecord(payload?.movement);
+        const mUid = movement ? asString(movement.uid) : undefined;
+        if (mUid) {
+          const found = await db.stockMovement.where("uid").equals(mUid).first();
+          if (!found) {
+            let itemId = movement ? asNumber(movement.itemId) : undefined;
+            const itemUid = movement ? asString(movement.itemUid) : undefined;
+            if (itemUid) {
+              const inv = await db.inventory.where("uid").equals(itemUid).first();
+              if (inv?.id) itemId = inv.id;
+            }
+            await db.stockMovement.add({ ...(movement as AnyRecord), itemId: itemId ?? 0 } as unknown as Omit<StockMovement, "id">);
+          }
+        }
+        const invDelta = asRecord(payload?.inventoryDelta ?? payload?.movement);
+        const itemUid = invDelta ? asString(invDelta.itemUid) : undefined;
+        const delta = invDelta ? asNumber(invDelta.delta) : undefined;
+        if (itemUid && typeof delta === "number") {
+          const inv = await db.inventory.where("uid").equals(itemUid).first();
+          if (inv?.id) await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
+        }
+        const dayEntry = asRecord(payload?.dayBook);
+        const dayUid = dayEntry ? asString(dayEntry.uid) : asString(payload?.dayBookUid);
+        if (dayUid) {
+          const foundDay = await db.dayBook.where("uid").equals(dayUid).first();
+          if (!foundDay && dayEntry) {
+            const accountId = await ensureFinancialAccountIdByUid(payload?.account ?? dayEntry.account);
+            const row: AnyRecord = { ...dayEntry };
+            delete row.account;
+            if (typeof accountId === "number") row.accountId = accountId;
+            if (row.affectsCash === undefined) row.affectsCash = true;
+            await db.dayBook.add(row as unknown as Omit<DayBookEntry, "id">);
+          }
+        }
+      }
+
+      if (e.entityType === "inventory.loss" && e.op === "create") {
+        const loss = asRecord(payload?.loss);
+        const lossUid = loss ? asString(loss.uid) : undefined;
+        if (lossUid) {
+          const found = await db.inventoryLosses.where("uid").equals(lossUid).first();
+          if (!found) {
+            let itemId = loss ? asNumber(loss.itemId) : undefined;
+            const itemUid = loss ? asString(loss.itemUid) : undefined;
+            if (itemUid) {
+              const inv = await db.inventory.where("uid").equals(itemUid).first();
+              if (inv?.id) itemId = inv.id;
+            }
+            if (typeof itemId === "number") {
+              await db.inventoryLosses.add({ ...(loss as AnyRecord), itemId } as unknown as Omit<InventoryLoss, "id">);
+            }
+          }
+        }
+        const movement = asRecord(payload?.movement);
+        const mUid = movement ? asString(movement.uid) : undefined;
+        if (mUid) {
+          const found = await db.stockMovement.where("uid").equals(mUid).first();
+          if (!found) {
+            let itemId = movement ? asNumber(movement.itemId) : undefined;
+            const itemUid = movement ? asString(movement.itemUid) : undefined;
+            if (itemUid) {
+              const inv = await db.inventory.where("uid").equals(itemUid).first();
+              if (inv?.id) itemId = inv.id;
+            }
+            await db.stockMovement.add({ ...(movement as AnyRecord), itemId: itemId ?? 0 } as unknown as Omit<StockMovement, "id">);
+          }
+        }
+        const invDelta = asRecord(payload?.inventoryDelta ?? payload?.movement);
+        const itemUid = invDelta ? asString(invDelta.itemUid) : undefined;
+        const delta = invDelta ? asNumber(invDelta.delta) : undefined;
+        if (itemUid && typeof delta === "number") {
+          const inv = await db.inventory.where("uid").equals(itemUid).first();
+          if (inv?.id) await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
+        }
+        const dayEntry = asRecord(payload?.dayBook);
+        const dayUid = dayEntry ? asString(dayEntry.uid) : asString(payload?.dayBookUid);
+        if (dayUid) {
+          const foundDay = await db.dayBook.where("uid").equals(dayUid).first();
+          if (!foundDay && dayEntry) {
+            const accountId = await ensureFinancialAccountIdByUid(payload?.account ?? dayEntry.account);
+            const row: AnyRecord = { ...dayEntry };
+            delete row.account;
+            if (typeof accountId === "number") row.accountId = accountId;
+            if (row.affectsCash === undefined) row.affectsCash = true;
+            await db.dayBook.add(row as unknown as Omit<DayBookEntry, "id">);
+          }
+        }
+      }
+
+      if (e.entityType === "farmHealth.vaccine" && (e.op === "create" || e.op === "update")) {
+        const vaccine = asRecord(payload?.vaccine);
+        const uid = vaccine ? asString(vaccine.uid) : undefined;
+        if (uid && vaccine) {
+          const found = await db.vaccines.where("uid").equals(uid).first();
+          const row = { ...(vaccine as AnyRecord) };
+          delete row.id;
+          if (!found) await db.vaccines.add(row as unknown as Omit<Vaccine, "id">);
+          else if (typeof found.id === "number") await db.vaccines.update(found.id, row as unknown as Partial<Vaccine>);
+        }
+      }
+
+      if (e.entityType === "farmHealth.usageBundle" && e.op === "create") {
+        const vaccine = asRecord(payload?.vaccine);
+        const vUid = vaccine ? asString(vaccine.uid) : undefined;
+        let vaccineId: number | undefined;
+        if (vUid && vaccine) {
+          const found = await db.vaccines.where("uid").equals(vUid).first();
+          const row = { ...(vaccine as AnyRecord) };
+          delete row.id;
+          if (!found) vaccineId = (await db.vaccines.add(row as unknown as Omit<Vaccine, "id">)) as number;
+          else {
+            vaccineId = found.id;
+            await db.vaccines.update(found.id, row as unknown as Partial<Vaccine>);
+          }
+        }
+        const usage = asRecord(payload?.usage);
+        const uUid = usage ? asString(usage.uid) : undefined;
+        let usageId: number | undefined;
+        if (uUid && usage && typeof vaccineId === "number") {
+          const found = await db.vaccineUsages.where("uid").equals(uUid).first();
+          if (!found) {
+            const uRow: AnyRecord = { ...usage };
+            delete uRow.id;
+            delete uRow.vaccineUid;
+            uRow.vaccineId = vaccineId;
+            usageId = (await db.vaccineUsages.add(uRow as unknown as Omit<VaccineUsage, "id">)) as number;
+          } else usageId = found.id;
+        }
+        const reminder = asRecord(payload?.reminder);
+        const rUid = reminder ? asString(reminder.uid) : undefined;
+        if (rUid && reminder && typeof usageId === "number") {
+          const found = await db.doseReminders.where("uid").equals(rUid).first();
+          if (!found) {
+            const rRow: AnyRecord = { ...reminder };
+            delete rRow.id;
+            delete rRow.usageUid;
+            rRow.vaccineUsageId = usageId;
+            await db.doseReminders.add(rRow as unknown as Omit<DoseReminder, "id">);
+          }
+        }
+        const healthLog = asRecord(payload?.healthLog);
+        const hUid = healthLog ? asString(healthLog.uid) : undefined;
+        if (hUid && healthLog && typeof usageId === "number") {
+          const found = await db.healthLogs.where("uid").equals(hUid).first();
+          if (!found) {
+            const hRow: AnyRecord = { ...healthLog };
+            delete hRow.id;
+            delete hRow.usageUid;
+            hRow.vaccineUsageId = usageId;
+            await db.healthLogs.add(hRow as unknown as Omit<HealthLog, "id">);
+          }
+        }
+      }
+
+      if (e.entityType === "farmHealth.reminder" && e.op === "update") {
+        const reminder = asRecord(payload?.reminder);
+        const rUid = reminder ? asString(reminder.uid) : undefined;
+        if (rUid && reminder) {
+          const found = await db.doseReminders.where("uid").equals(rUid).first();
+          if (found?.id) {
+            const patch: Partial<DoseReminder> = {};
+            const st = reminder.status;
+            if (st === "upcoming" || st === "due_today" || st === "overdue" || st === "completed") patch.status = st;
+            const ca = asString(reminder.completedAt);
+            if (ca) patch.completedAt = ca;
+            await db.doseReminders.update(found.id, patch);
           }
         }
       }

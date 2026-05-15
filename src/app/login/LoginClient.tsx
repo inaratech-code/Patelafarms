@@ -6,7 +6,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
 import { getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
-import { pullEvents } from "@/lib/sync";
+import { pullEvents, syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 
@@ -31,7 +31,7 @@ export function LoginClient() {
     void (async () => {
       try {
         await ensureSupabaseAuth();
-        await pullEvents();
+        await syncNow();
       } catch {
         /* Supabase not configured, offline, or not a farm member yet */
       }
@@ -67,7 +67,7 @@ export function LoginClient() {
           console.warn("Credential link:", e);
         }
         if (linkedFarmId) {
-          await pullEvents();
+          await syncNow();
         }
         await loginWithPassword({ username, password });
       }

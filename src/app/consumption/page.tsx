@@ -115,7 +115,11 @@ function ConsumptionPageInner() {
             payload: {
               log: { ...log, itemUid: selected.uid },
               movement: { uid: movUid, itemUid: selected.uid, delta: -qty },
-              dayBookUid: dayUid,
+              inventoryDelta: { itemUid: selected.uid, delta: -qty },
+              dayBook: {
+                ...day,
+                account: acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null,
+              },
               account: acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null,
             },
           })
