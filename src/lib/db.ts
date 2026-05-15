@@ -107,7 +107,8 @@ export interface DayBookEntry {
   description: string;
   amount: number;
   type: 'Income' | 'Expense';
-  category: 'Sale' | 'Purchase' | 'Transport' | 'Wage' | 'Other' | 'Vaccine';
+  /** System values include Sale/Purchase/Vaccine; general expenses may use custom labels too. */
+  category: 'Sale' | 'Purchase' | 'Transport' | 'Wage' | 'Other' | 'Vaccine' | string;
   accountId?: number; // FinancialAccount.id (Cash/Bank/QR)
   method?: DayBookPaymentMethod;
   /**

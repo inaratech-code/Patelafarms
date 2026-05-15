@@ -10,8 +10,7 @@ import { newUid } from "@/lib/uid";
 import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { useRouter } from "next/navigation";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
-
-const expenseCategories: Array<DayBookEntry["category"]> = ["Transport", "Wage", "Other"];
+import { buildExpenseCategoryOptions, rememberExpenseCategory } from "@/lib/expenseCategories";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -25,7 +24,7 @@ export default function ExpensesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
-    category: "Other" as DayBookEntry["category"],
+    category: "Other",
     amount: "" as string,
     description: "",
     method: "Cash" as PaymentMethod,
@@ -36,6 +35,8 @@ export default function ExpensesPage() {
     () => entries.slice().sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()),
     [entries]
   );
+
+  const categoryOptions = useMemo(() => buildExpenseCategoryOptions(entries), [entries]);
 
   const totalThisMonth = useMemo(() => {
     const now = new Date();
@@ -52,6 +53,8 @@ export default function ExpensesPage() {
     const amount = Number(form.amount);
     if (!Number.isFinite(amount) || amount <= 0) return alert("Amount must be greater than 0.");
     if (!form.description.trim()) return alert("Description is required.");
+    const category = form.category.trim();
+    if (!category) return alert("Category is required.");
 
     const time = new Date(`${form.date}T12:00:00`).toISOString();
     const accountId = Number(form.accountId) || (await getOrCreateDefaultCashAccountId());
@@ -62,7 +65,7 @@ export default function ExpensesPage() {
         uid: newUid(),
         time,
         type: "Expense" as const,
-        category: form.category,
+        category,
         amount,
         description: form.description.trim(),
         method: form.method,
@@ -111,6 +114,7 @@ export default function ExpensesPage() {
           })
         );
       });
+      rememberExpenseCategory(category);
       setShowForm(false);
       setForm({
         date: new Date().toISOString().slice(0, 10),
@@ -200,17 +204,21 @@ export default function ExpensesPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Category</label>
-              <select
+              <input
+                required
+                type="text"
+                list="expense-category-names"
+                autoComplete="off"
                 value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value as DayBookEntry["category"] })}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className="w-full px-3 py-2 border rounded-md bg-white"
-              >
-                {expenseCategories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                placeholder="Pick from list or type a new category"
+              />
+              <datalist id="expense-category-names">
+                {categoryOptions.map((c) => (
+                  <option key={c} value={c} />
                 ))}
-              </select>
+              </datalist>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Payment Mode</label>
