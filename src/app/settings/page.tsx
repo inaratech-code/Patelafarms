@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Bell,
 } from "lucide-react";
 import { db, type User } from "@/lib/db";
 import { changePassword, clearSession, getSession } from "@/lib/auth";
@@ -22,6 +23,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
+import {
+  getBrowserNotificationPrefs,
+  getNotificationPermission,
+  isBrowserNotificationSupported,
+  requestNotificationPermission,
+  setBrowserNotificationPrefs,
+} from "@/lib/browserNotifications";
 
 export default function SettingsPage() {
   const session = useMemo(() => getSession(), []);
@@ -39,6 +47,16 @@ export default function SettingsPage() {
   const [isResetting, setIsResetting] = useState(false);
   const [farmLink, setFarmLink] = useState<{ id: string; joinCode: string } | null>(null);
   const [farmLinkError, setFarmLinkError] = useState<string>("");
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
+  const [notifyPermission, setNotifyPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [notifyStatus, setNotifyStatus] = useState<string>("");
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setNotifyEnabled(getBrowserNotificationPrefs().enabled);
+      setNotifyPermission(getNotificationPermission());
+    });
+  }, []);
 
   useEffect(() => {
     const fid = getFarmId();
@@ -320,6 +338,73 @@ export default function SettingsPage() {
             <div className="text-sm text-slate-700">{syncStatus}</div>
           ) : (
             null
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden max-w-2xl">
+        <div className="p-6 border-b border-slate-100">
+          <h2 className="text-lg font-medium text-slate-900 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-primary" />
+            Alerts & notifications
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            System notifications for low stock and vaccine dose schedules (overdue, due today, upcoming within 3 days).
+          </p>
+        </div>
+        <div className="p-6 space-y-4">
+          {!isBrowserNotificationSupported() ? (
+            <p className="text-sm text-slate-600">This browser does not support notifications.</p>
+          ) : (
+            <>
+              <label className="flex items-center justify-between gap-4 cursor-pointer">
+                <span className="text-sm font-medium text-slate-800">Enable alert notifications</span>
+                <input
+                  type="checkbox"
+                  checked={notifyEnabled}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setNotifyEnabled(enabled);
+                    setBrowserNotificationPrefs({ enabled });
+                    setNotifyStatus(enabled ? "Notifications enabled in app." : "Notifications turned off.");
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                />
+              </label>
+              <div className="text-sm text-slate-600">
+                Permission:{" "}
+                <span className="font-semibold text-slate-900">
+                  {notifyPermission === "unsupported"
+                    ? "Not supported"
+                    : notifyPermission === "granted"
+                      ? "Allowed"
+                      : notifyPermission === "denied"
+                        ? "Blocked"
+                        : "Not asked yet"}
+                </span>
+              </div>
+              {notifyPermission !== "granted" ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90"
+                  onClick={async () => {
+                    const p = await requestNotificationPermission();
+                    setNotifyPermission(p);
+                    if (p === "granted") {
+                      setNotifyStatus("Browser notifications allowed.");
+                      setNotifyEnabled(true);
+                      setBrowserNotificationPrefs({ enabled: true });
+                    } else if (p === "denied") {
+                      setNotifyStatus("Permission denied. Enable notifications in your browser site settings.");
+                    }
+                  }}
+                >
+                  <Bell className="w-4 h-4" />
+                  Allow notifications
+                </button>
+              ) : null}
+              {notifyStatus ? <p className="text-sm text-slate-700">{notifyStatus}</p> : null}
+            </>
           )}
         </div>
       </div>
