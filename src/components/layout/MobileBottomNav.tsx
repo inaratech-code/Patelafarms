@@ -46,7 +46,7 @@ export function MobileBottomNav() {
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
   const perms =
-    session?.roleId && role == null
+    session?.roleId && role === undefined
       ? normalizePermissions(["*"])
       : normalizePermissions(role?.permissions as string[] | undefined);
   const visibleNav = nav.filter((i) => i.isAction || canAccessPath(perms, i.href));
