@@ -273,6 +273,7 @@ export async function pullEvents() {
   const farmId = await ensureFarm();
   const state = getSyncState();
   let since = state.lastPulledAt;
+  let sinceId = state.lastPulledEventId;
   let totalPulled = 0;
 
   // Page through events so new devices catch up even when >500 changes exist.
@@ -282,8 +283,15 @@ export async function pullEvents() {
       .select("*")
       .eq("farm_id", farmId)
       .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .limit(500);
-    if (since) query = query.gt("created_at", since);
+    if (since && sinceId) {
+      query = query.or(`created_at.gt.${since},and(created_at.eq.${since},id.gt.${sinceId})`);
+    } else if (since) {
+      // Old sync state did not include the event id. Re-read the boundary timestamp once
+      // so any same-timestamp events skipped by the old cursor can still be applied.
+      query = query.gte("created_at", since);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -292,8 +300,10 @@ export async function pullEvents() {
 
     await applyEvents(rows);
     totalPulled += rows.length;
-    since = rows[rows.length - 1].createdAt;
-    setSyncState({ lastPulledAt: since });
+    const last = rows[rows.length - 1];
+    since = last.createdAt;
+    sinceId = last.id;
+    setSyncState({ lastPulledAt: since, lastPulledEventId: sinceId });
 
     if (rows.length < 500) break;
   }
@@ -787,6 +797,27 @@ export async function applyEvents(events: SyncEvent[]) {
             hRow.vaccineUsageId = usageId;
             await db.healthLogs.add(hRow as unknown as Omit<HealthLog, "id">);
           }
+        }
+      }
+
+      if (e.entityType === "farmHealth.healthLog" && (e.op === "create" || e.op === "update")) {
+        const healthLog = asRecord(payload?.healthLog);
+        const hUid = healthLog ? asString(healthLog.uid) : undefined;
+        if (hUid && healthLog) {
+          const row: AnyRecord = { ...healthLog };
+          delete row.id;
+          delete row.usageUid;
+
+          const usageUid = asString(healthLog.usageUid);
+          if (usageUid) {
+            const usage = await db.vaccineUsages.where("uid").equals(usageUid).first();
+            if (usage?.id) row.vaccineUsageId = usage.id;
+            else delete row.vaccineUsageId;
+          }
+
+          const found = await db.healthLogs.where("uid").equals(hUid).first();
+          if (!found) await db.healthLogs.add(row as unknown as Omit<HealthLog, "id">);
+          else if (typeof found.id === "number") await db.healthLogs.update(found.id, row as unknown as Partial<HealthLog>);
         }
       }
 

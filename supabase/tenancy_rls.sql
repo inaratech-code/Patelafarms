@@ -27,6 +27,7 @@ alter table public.events
   add column if not exists farm_id uuid references public.farms(id) on delete cascade;
 
 create index if not exists events_farm_created_idx on public.events(farm_id, created_at);
+create index if not exists events_farm_created_id_idx on public.events(farm_id, created_at, id);
 
 -- Helper: membership check (SECURITY DEFINER so reads on farm_members do not
 -- re-enter farm_members_select → is_farm_member → stack overflow / 54001).
