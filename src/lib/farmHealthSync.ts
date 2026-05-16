@@ -72,6 +72,26 @@ export async function enqueueReminderOutbox(reminder: DoseReminder, usageUid: st
   );
 }
 
+export async function enqueueHealthLogOutbox(healthLog: HealthLog, usageUid?: string) {
+  const uid = healthLog.uid?.trim();
+  if (!uid) return;
+  await db.outbox.add(
+    makeSyncEvent({
+      entityType: "farmHealth.healthLog",
+      entityId: uid,
+      op: "create",
+      payload: {
+        healthLog: {
+          ...healthLog,
+          id: undefined,
+          vaccineUsageId: undefined,
+          usageUid,
+        },
+      },
+    })
+  );
+}
+
 /** One-time: emit farm-health rows that existed before sync was wired. */
 export async function enqueueFarmHealthOutboxBackfillOnce() {
   if (typeof window === "undefined") return;
@@ -83,6 +103,7 @@ export async function enqueueFarmHealthOutboxBackfillOnce() {
   const logs = await db.healthLogs.toArray();
   const vaccineById = new Map(vaccines.filter((v) => v.id).map((v) => [v.id!, v]));
   const usageById = new Map(usages.filter((u) => u.id).map((u) => [u.id!, u]));
+  const bundledLogIds = new Set<number>();
 
   await db.transaction("rw", db.outbox, async () => {
     for (const v of vaccines) {
@@ -102,6 +123,7 @@ export async function enqueueFarmHealthOutboxBackfillOnce() {
       if (!v?.uid || !u.uid) continue;
       const reminder = reminders.find((r) => r.vaccineUsageId === u.id);
       const log = logs.find((l) => l.vaccineUsageId === u.id);
+      if (log?.id) bundledLogIds.add(log.id);
       const vaccinePayload = { ...v, id: undefined };
       const usagePayload = { ...u, id: undefined, vaccineId: undefined, vaccineUid: v.uid };
       await db.outbox.add(
@@ -118,6 +140,25 @@ export async function enqueueFarmHealthOutboxBackfillOnce() {
             healthLog: log
               ? { ...log, id: undefined, vaccineUsageId: undefined, usageUid: u.uid }
               : undefined,
+          },
+        })
+      );
+    }
+    for (const log of logs) {
+      if (!log.uid || (log.id && bundledLogIds.has(log.id))) continue;
+      const usage = typeof log.vaccineUsageId === "number" ? usageById.get(log.vaccineUsageId) : undefined;
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "farmHealth.healthLog",
+          entityId: log.uid,
+          op: "create",
+          payload: {
+            healthLog: {
+              ...log,
+              id: undefined,
+              vaccineUsageId: undefined,
+              usageUid: usage?.uid,
+            },
           },
         })
       );

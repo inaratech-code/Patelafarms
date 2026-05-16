@@ -15,6 +15,7 @@ create index if not exists events_created_at_idx on public.events(created_at);
 create index if not exists events_entity_idx on public.events(entity_type, entity_id);
 create index if not exists events_device_created_idx on public.events(device_id, created_at);
 create index if not exists events_farm_created_idx on public.events(farm_id, created_at);
+create index if not exists events_farm_created_id_idx on public.events(farm_id, created_at, id);
 
 -- Minimal policy (dev): allow all authenticated + anon to read/write.
 -- Tighten this later with per-farm tenancy + RLS.
