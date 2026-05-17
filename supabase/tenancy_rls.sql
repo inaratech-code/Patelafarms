@@ -91,6 +91,11 @@ with check (
 );
 
 -- Events: only members can read/write within their farm
+-- Remove the broad development policies from events.sql; permissive RLS
+-- policies are ORed together, so leaving them in place bypasses farm scoping.
+drop policy if exists "events_read_all" on public.events;
+drop policy if exists "events_insert_all" on public.events;
+
 drop policy if exists events_select_farm on public.events;
 create policy events_select_farm on public.events
 as permissive

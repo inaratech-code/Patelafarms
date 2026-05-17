@@ -2,6 +2,7 @@ export const SYNC_STATE_KEY = "pf.syncState.v1";
 
 export type SyncState = {
   lastPulledAt?: string; // ISO timestamptz
+  lastPulledId?: string; // tie-breaker for events sharing lastPulledAt
 };
 
 export function getSyncState(): SyncState {
