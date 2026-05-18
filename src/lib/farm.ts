@@ -67,7 +67,7 @@ export function setFarmId(id: string) {
   if (typeof window === "undefined") return;
   const prev = localStorage.getItem(FARM_ID_KEY);
   localStorage.setItem(FARM_ID_KEY, id);
-  // New farm id must not reuse lastPulledAt from another farm, or pulls skip older events (empty users).
+  // New farm id must not reuse the pull cursor from another farm, or pulls skip older events (empty users).
   if (prev !== id) {
     setSyncState({});
     void import("@/lib/autoSync").then(({ restartAutoSync }) => restartAutoSync());
