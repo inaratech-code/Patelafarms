@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
+import { formatLoginError } from "@/lib/loginErrors";
 import { getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
 import { pullEvents, syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
@@ -55,6 +56,7 @@ export function LoginClient() {
         await loginWithPassword({ username, password });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Login failed";
+        if (msg === "Incorrect password." || msg === "Invalid password") throw err;
         if (msg !== "User not found") throw err;
 
         // Slow path: only if user isn't on this device, try cloud link + pull, then retry login.
@@ -73,18 +75,10 @@ export function LoginClient() {
       }
       const next = search.get("next") ?? "/";
       window.location.replace(next);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Login failed";
-      if (msg === "User not found") {
-        setError(
-          hasUsers
-            ? "No user matches that username (check spelling). Password login across devices needs Supabase: run farm_cloud_logins.sql, then on a device that already has this user open Settings → Sync once."
-            : "No account on this browser yet. Run supabase/farm_cloud_logins.sql in Supabase, then on your main device use Settings → Sync once so your username/password are registered. Then try again here (same username and password), or use Advanced → join code."
-        );
-      } else {
-        setError(msg);
-      }
-    } finally {
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Login failed";
+        setError(formatLoginError(msg, hasUsers));
+      } finally {
       setIsWorking(false);
     }
   };

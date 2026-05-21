@@ -28,15 +28,22 @@ export function getSession(): Session | null {
   }
 }
 
+export function notifySessionChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event("pf-session-change"));
+}
+
 export function setSession(session: Omit<Session, "createdAt">) {
   if (typeof window === "undefined") return;
   const full: Session = { ...session, createdAt: Date.now() };
   localStorage.setItem(SESSION_KEY, JSON.stringify(full));
+  notifySessionChanged();
 }
 
 export function clearSession() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(SESSION_KEY);
+  notifySessionChanged();
 }
 
 export async function sha256Base64(input: string) {
@@ -77,7 +84,7 @@ export async function loginWithPassword(params: { username: string; password: st
   if (!user.passwordHash) throw new Error("User has no password set");
 
   const hash = await sha256Base64(password);
-  if (hash !== user.passwordHash) throw new Error("Invalid password");
+  if (hash !== user.passwordHash) throw new Error("Incorrect password.");
 
   setSession({ userId: user.id, username: user.username, roleId: user.roleId });
 

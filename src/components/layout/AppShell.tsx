@@ -4,10 +4,10 @@ import { SidebarDesktop, SidebarProvider } from "@/components/sidebar/Sidebar";
 import { TopHeader } from "@/components/layout/TopHeader";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { clearSession, getSession } from "@/lib/auth";
+import { clearSession, getSession, type Session } from "@/lib/auth";
 import { PushAlertsWatcher } from "@/components/notifications/PushAlertsWatcher";
 import { startAutoSync } from "@/lib/autoSync";
 import { canAccessPath, normalizePermissions, pickDefaultRoute } from "@/lib/rbac";
@@ -15,8 +15,31 @@ import { canAccessPath, normalizePermissions, pickDefaultRoute } from "@/lib/rba
 export function AppShell(props: { children: React.ReactNode }) {
   const pathname = usePathname();
   const users = useLiveQuery(() => db.users.toArray());
-  const [checked, setChecked] = useState(false);
-  const session = useMemo(() => getSession(), [pathname]);
+  const [authReady, setAuthReady] = useState(false);
+  const [session, setSessionState] = useState<Session | null>(null);
+
+  const refreshSession = useCallback(() => {
+    setSessionState(getSession());
+  }, []);
+
+  // Read session only on the client (avoids SSR/hydration treating everyone as logged out).
+  useEffect(() => {
+    refreshSession();
+    queueMicrotask(() => setAuthReady(true));
+  }, [pathname, refreshSession]);
+
+  useEffect(() => {
+    const onSession = () => refreshSession();
+    window.addEventListener("pf-session-change", onSession);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "pf.session.v1") refreshSession();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("pf-session-change", onSession);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [refreshSession]);
   const role = useLiveQuery(async () => {
     const roleId = session?.roleId ?? 0;
     if (!roleId) return null;
@@ -87,26 +110,24 @@ export function AppShell(props: { children: React.ReactNode }) {
   }, [isLoginRoute, session?.userId]);
 
   useEffect(() => {
+    if (!authReady) return;
     const authed = Boolean(session?.userId);
     if (!isLoginRoute && !isBootstrapAllowed && !authed) {
-      // In dev (Turbopack), next/navigation can dispatch before router init.
-      // Use a hard navigation for auth gating to avoid that class of error.
       window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
-      return; // keep UI blank; avoid flashing dashboard before redirect
     }
-    queueMicrotask(() => setChecked(true));
-  }, [isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
+  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
 
   useEffect(() => {
+    if (!authReady) return;
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
-    // Wait until the role record is loaded; otherwise we can get a redirect loop on first render.
     if (session?.roleId && role == null) return;
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
+    const target = pickDefaultRoute(perms);
     if (!canAccessPath(perms, pathname || "/")) {
-      window.location.replace(pickDefaultRoute(perms));
+      if (target !== pathname) window.location.replace(target);
     }
-  }, [isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
+  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -121,8 +142,7 @@ export function AppShell(props: { children: React.ReactNode }) {
     return () => window.clearInterval(id);
   }, [isLoginRoute]);
 
-  // Prevent brief flash of app before redirect.
-  if (!checked && !isLoginRoute) return null;
+  if (!authReady && !isLoginRoute) return null;
 
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;
