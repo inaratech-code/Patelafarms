@@ -10,7 +10,7 @@ import { enqueueHealthLogOutbox } from "@/lib/farmHealthSync";
 import { newUid } from "@/lib/uid";
 
 export default function HealthLogsPage() {
-  const logs = useLiveQuery(() => db.healthLogs.orderBy("date").reverse().toArray()) || [];
+  const logs = useLiveQuery(() => db.healthLogs.orderBy("date").reverse().toArray());
   const [open, setOpen] = useState(false);
   const [batch, setBatch] = useState("");
   const [summary, setSummary] = useState("");
@@ -18,7 +18,7 @@ export default function HealthLogsPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
 
-  const sorted = useMemo(() => logs.slice(), [logs]);
+  const sorted = useMemo(() => (logs ?? []).slice(), [logs]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
