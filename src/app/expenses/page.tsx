@@ -3,7 +3,7 @@
 import { Plus, Receipt } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type DayBookEntry } from "@/lib/db";
+import { db } from "@/lib/db";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
@@ -58,6 +58,12 @@ export default function ExpensesPage() {
 
     const time = new Date(`${form.date}T12:00:00`).toISOString();
     const accountId = Number(form.accountId) || (await getOrCreateDefaultCashAccountId());
+    let financialAccount = await db.financialAccounts.get(accountId);
+    if (financialAccount?.id && !financialAccount.uid) {
+      const uid = newUid();
+      await db.financialAccounts.update(financialAccount.id, { uid });
+      financialAccount = { ...financialAccount, uid };
+    }
 
     try {
       setIsSaving(true);
@@ -110,7 +116,13 @@ export default function ExpensesPage() {
             entityType: "daybook.expense",
             entityId: entry.uid!,
             op: "create",
-            payload: { id, entry },
+            payload: {
+              id,
+              entry,
+              account: financialAccount?.uid
+                ? { uid: financialAccount.uid, name: financialAccount.name, type: financialAccount.type }
+                : undefined,
+            },
           })
         );
       });
