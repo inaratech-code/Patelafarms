@@ -43,8 +43,13 @@ function asString(v: unknown): string | undefined {
 function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
+function asReminderStatus(v: unknown): DoseReminder["status"] | undefined {
+  if (v === "upcoming" || v === "due_today" || v === "overdue" || v === "completed") return v;
+  return undefined;
+}
 
 const ROLE_USER_OUTBOX_BACKFILL = "pf.roleUserOutboxV1";
+let applyEventsTail: Promise<void> = Promise.resolve();
 
 async function upsertRoleFromSyncPayload(roleRaw: unknown) {
   const r = asRecord(roleRaw);
@@ -272,7 +277,8 @@ export async function pullEvents() {
   await ensureSupabaseAuth();
   const farmId = await ensureFarm();
   const state = getSyncState();
-  let since = state.lastPulledAt;
+  let cursorAt = state.lastPulledAt;
+  let cursorId = state.lastPulledId;
   let totalPulled = 0;
 
   // Page through events so new devices catch up even when >500 changes exist.
@@ -282,8 +288,14 @@ export async function pullEvents() {
       .select("*")
       .eq("farm_id", farmId)
       .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .limit(500);
-    if (since) query = query.gt("created_at", since);
+    if (cursorAt && cursorId) {
+      query = query.or(`created_at.gt.${cursorAt},and(created_at.eq.${cursorAt},id.gt.${cursorId})`);
+    } else if (cursorAt) {
+      // Recover old timestamp-only cursors by replaying that timestamp idempotently.
+      query = query.gte("created_at", cursorAt);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -292,8 +304,9 @@ export async function pullEvents() {
 
     await applyEvents(rows);
     totalPulled += rows.length;
-    since = rows[rows.length - 1].createdAt;
-    setSyncState({ lastPulledAt: since });
+    cursorAt = rows[rows.length - 1].createdAt;
+    cursorId = rows[rows.length - 1].id;
+    setSyncState({ lastPulledAt: cursorAt, lastPulledId: cursorId });
 
     if (rows.length < 500) break;
   }
@@ -302,6 +315,16 @@ export async function pullEvents() {
 }
 
 export async function applyEvents(events: SyncEvent[]) {
+  if (events.length === 0) return;
+  const run = applyEventsTail.then(
+    () => applyEventsUnlocked(events),
+    () => applyEventsUnlocked(events)
+  );
+  applyEventsTail = run.catch(() => undefined);
+  return run;
+}
+
+async function applyEventsUnlocked(events: SyncEvent[]) {
   // Idempotency: skip events already applied.
   // Avoid loading the entire outbox (can be large on mobile). Use bulkGet by ids.
   const ids = events.map((e) => e.id);
@@ -315,6 +338,11 @@ export async function applyEvents(events: SyncEvent[]) {
   await db.transaction("rw", db.tables, async () => {
     for (const e of events) {
       if (existing.has(e.id)) continue;
+      const alreadyApplied = await db.outbox.get(e.id);
+      if (alreadyApplied) {
+        existing.add(e.id);
+        continue;
+      }
 
       const ensureFinancialAccountIdByUid = async (account: unknown) => {
         const a = asRecord(account);
@@ -445,7 +473,13 @@ export async function applyEvents(events: SyncEvent[]) {
         const uid = entry ? asString(entry.uid) : undefined;
         if (uid) {
           const found = await db.dayBook.where("uid").equals(uid).first();
-          if (!found) await db.dayBook.add({ ...(entry as AnyRecord), affectsCash: (entry as AnyRecord).affectsCash ?? true } as unknown as Omit<DayBookEntry, "id">);
+          if (!found) {
+            const accountId = await ensureFinancialAccountIdByUid(payload?.account ?? entry.account);
+            const row: AnyRecord = { ...(entry as AnyRecord), affectsCash: (entry as AnyRecord).affectsCash ?? true };
+            delete row.account;
+            if (typeof accountId === "number") row.accountId = accountId;
+            await db.dayBook.add(row as unknown as Omit<DayBookEntry, "id">);
+          }
         }
       }
       if (e.entityType === "payment.posted" && e.op === "create") {
@@ -740,13 +774,17 @@ export async function applyEvents(events: SyncEvent[]) {
       if (e.entityType === "farmHealth.usageBundle" && e.op === "create") {
         const vaccine = asRecord(payload?.vaccine);
         const vUid = vaccine ? asString(vaccine.uid) : undefined;
+        const qtyDelta = asNumber(payload?.vaccineQtyDelta);
         let vaccineId: number | undefined;
+        let vaccineWasFound = false;
         if (vUid && vaccine) {
           const found = await db.vaccines.where("uid").equals(vUid).first();
           const row = { ...(vaccine as AnyRecord) };
           delete row.id;
+          if (typeof qtyDelta === "number" && found) delete row.qtyAvailable;
           if (!found) vaccineId = (await db.vaccines.add(row as unknown as Omit<Vaccine, "id">)) as number;
           else {
+            vaccineWasFound = true;
             vaccineId = found.id;
             await db.vaccines.update(found.id, row as unknown as Partial<Vaccine>);
           }
@@ -754,6 +792,7 @@ export async function applyEvents(events: SyncEvent[]) {
         const usage = asRecord(payload?.usage);
         const uUid = usage ? asString(usage.uid) : undefined;
         let usageId: number | undefined;
+        let createdUsage = false;
         if (uUid && usage && typeof vaccineId === "number") {
           const found = await db.vaccineUsages.where("uid").equals(uUid).first();
           if (!found) {
@@ -762,18 +801,31 @@ export async function applyEvents(events: SyncEvent[]) {
             delete uRow.vaccineUid;
             uRow.vaccineId = vaccineId;
             usageId = (await db.vaccineUsages.add(uRow as unknown as Omit<VaccineUsage, "id">)) as number;
+            createdUsage = true;
           } else usageId = found.id;
+        }
+        if (createdUsage && typeof qtyDelta === "number" && vaccineWasFound && typeof vaccineId === "number") {
+          const current = await db.vaccines.get(vaccineId);
+          if (current?.id) {
+            await db.vaccines.update(current.id, { qtyAvailable: Number(current.qtyAvailable ?? 0) + qtyDelta });
+          }
         }
         const reminder = asRecord(payload?.reminder);
         const rUid = reminder ? asString(reminder.uid) : undefined;
         if (rUid && reminder && typeof usageId === "number") {
           const found = await db.doseReminders.where("uid").equals(rUid).first();
+          const rRow: AnyRecord = { ...reminder };
+          delete rRow.id;
+          delete rRow.usageUid;
+          rRow.vaccineUsageId = usageId;
           if (!found) {
-            const rRow: AnyRecord = { ...reminder };
-            delete rRow.id;
-            delete rRow.usageUid;
-            rRow.vaccineUsageId = usageId;
             await db.doseReminders.add(rRow as unknown as Omit<DoseReminder, "id">);
+          } else if (found.id) {
+            if (found.status === "completed" || found.completedAt) {
+              delete rRow.status;
+              delete rRow.completedAt;
+            }
+            await db.doseReminders.update(found.id, rRow as unknown as Partial<DoseReminder>);
           }
         }
         const healthLog = asRecord(payload?.healthLog);
@@ -795,14 +847,48 @@ export async function applyEvents(events: SyncEvent[]) {
         const rUid = reminder ? asString(reminder.uid) : undefined;
         if (rUid && reminder) {
           const found = await db.doseReminders.where("uid").equals(rUid).first();
+          const patch: Partial<DoseReminder> = {};
+          const st = asReminderStatus(reminder.status);
+          if (st) patch.status = st;
+          const ca = asString(reminder.completedAt);
+          if (ca) patch.completedAt = ca;
           if (found?.id) {
-            const patch: Partial<DoseReminder> = {};
-            const st = reminder.status;
-            if (st === "upcoming" || st === "due_today" || st === "overdue" || st === "completed") patch.status = st;
-            const ca = asString(reminder.completedAt);
-            if (ca) patch.completedAt = ca;
             await db.doseReminders.update(found.id, patch);
+          } else {
+            const usageUid = asString(payload?.usageUid);
+            const usage = usageUid ? await db.vaccineUsages.where("uid").equals(usageUid).first() : undefined;
+            const reminderDate = asString(reminder.reminderDate);
+            if (reminderDate) {
+              const cadence = reminder.cadence === "weekly" || reminder.cadence === "monthly" ? reminder.cadence : "daily";
+              await db.doseReminders.add({
+                uid: rUid,
+                vaccineUsageId: usage?.id ?? 0,
+                reminderDate,
+                status: st ?? "upcoming",
+                cadence,
+                title: asString(reminder.title),
+                completedAt: ca,
+              });
+            }
           }
+        }
+      }
+
+      if (e.entityType === "farmHealth.healthLog" && (e.op === "create" || e.op === "update")) {
+        const healthLog = asRecord(payload?.healthLog);
+        const hUid = healthLog ? asString(healthLog.uid) : undefined;
+        if (hUid && healthLog) {
+          const found = await db.healthLogs.where("uid").equals(hUid).first();
+          const row: AnyRecord = { ...healthLog };
+          delete row.id;
+          delete row.usageUid;
+          const usageUid = asString(healthLog.usageUid);
+          if (usageUid) {
+            const usage = await db.vaccineUsages.where("uid").equals(usageUid).first();
+            if (usage?.id) row.vaccineUsageId = usage.id;
+          }
+          if (!found) await db.healthLogs.add(row as unknown as Omit<HealthLog, "id">);
+          else if (found.id) await db.healthLogs.update(found.id, row as unknown as Partial<HealthLog>);
         }
       }
 
@@ -814,8 +900,8 @@ export async function applyEvents(events: SyncEvent[]) {
 }
 
 export async function syncNow() {
-  const push = await pushOutbox();
   const pull = await pullEvents();
+  const push = await pushOutbox();
   return { ...push, ...pull };
 }
 

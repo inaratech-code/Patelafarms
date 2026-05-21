@@ -41,8 +41,8 @@ async function tick() {
   if (!farmId) return;
   try {
     _isTicking = true;
-    await pushOutbox();
     await pullEvents();
+    await pushOutbox();
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("pf-sync-complete"));
     }

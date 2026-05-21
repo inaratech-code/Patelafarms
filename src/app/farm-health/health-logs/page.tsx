@@ -6,6 +6,7 @@ import { ClipboardList, Plus } from "lucide-react";
 import { FarmHealthModal } from "@/components/farm-health/FarmHealthModal";
 import { FarmHealthSubnav } from "@/components/farm-health/FarmHealthSubnav";
 import { db } from "@/lib/db";
+import { enqueueHealthLogOutbox } from "@/lib/farmHealthSync";
 import { newUid } from "@/lib/uid";
 
 export default function HealthLogsPage() {
@@ -26,12 +27,16 @@ export default function HealthLogsPage() {
     setSaving(true);
     try {
       const iso = new Date(`${date}T12:00:00`).toISOString();
-      await db.healthLogs.add({
+      const log = {
         uid: newUid(),
         date: iso,
         animalBatch: batch.trim(),
         summary: summary.trim(),
         notes: notes.trim() || undefined,
+      };
+      await db.transaction("rw", db.healthLogs, db.outbox, async () => {
+        await db.healthLogs.add(log);
+        await enqueueHealthLogOutbox(log);
       });
       setOpen(false);
       setBatch("");
