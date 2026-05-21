@@ -471,7 +471,7 @@ async function applyEventsUnlocked(events: SyncEvent[]) {
       if (e.entityType === "daybook.expense" && e.op === "create") {
         const entry = asRecord(payload?.entry);
         const uid = entry ? asString(entry.uid) : undefined;
-        if (uid) {
+        if (uid && entry) {
           const found = await db.dayBook.where("uid").equals(uid).first();
           if (!found) {
             const accountId = await ensureFinancialAccountIdByUid(payload?.account ?? entry.account);
