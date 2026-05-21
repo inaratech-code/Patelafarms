@@ -7,7 +7,8 @@ const FARM_HEALTH_BACKFILL_KEY = "pf.farmHealthOutboxV1";
 export async function enqueueVaccineOutbox(vaccine: Vaccine, op: "create" | "update" = "create") {
   const uid = vaccine.uid?.trim();
   if (!uid) return;
-  const { id: _id, ...rest } = vaccine;
+  const rest = { ...vaccine };
+  delete rest.id;
   await db.outbox.add(
     makeSyncEvent({
       entityType: "farmHealth.vaccine",
@@ -103,7 +104,8 @@ export async function enqueueFarmHealthOutboxBackfillOnce() {
   await db.transaction("rw", db.outbox, async () => {
     for (const v of vaccines) {
       if (!v.uid) continue;
-      const { id: _id, ...rest } = v;
+      const rest = { ...v };
+      delete rest.id;
       await db.outbox.add(
         makeSyncEvent({
           entityType: "farmHealth.vaccine",
@@ -155,7 +157,8 @@ export async function enqueueFarmHealthOutboxBackfillOnce() {
     }
     for (const l of logs) {
       if (l.vaccineUsageId || !l.uid) continue;
-      const { id: _id, ...rest } = l;
+      const rest = { ...l };
+      delete rest.id;
       await db.outbox.add(
         makeSyncEvent({
           entityType: "farmHealth.healthLog",
