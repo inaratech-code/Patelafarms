@@ -4,6 +4,7 @@ const OFFLINE_URL = "/offline";
 const FARM_HEALTH_ALERT_SOUND = "/sounds/farm-health-alert.wav";
 const FARM_HEALTH_VIBRATE = [400, 120, 400, 120, 500, 120, 600];
 const PLAY_FARM_HEALTH_SOUND_MESSAGE = "pf.playFarmHealthSound";
+const BROADCAST_FARM_HEALTH_SOUND_MESSAGE = "pf.broadcastFarmHealthSound";
 const CORE_ASSETS = ["/", "/manifest.json", "/logo.png", OFFLINE_URL, FARM_HEALTH_ALERT_SOUND];
 
 function isFarmHealthPayload(payload, url) {
@@ -57,6 +58,9 @@ self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data && data.type === "SKIP_WAITING") {
     self.skipWaiting();
+  }
+  if (data?.type === BROADCAST_FARM_HEALTH_SOUND_MESSAGE) {
+    event.waitUntil(notifyOpenClientsFarmHealthSound());
   }
 });
 

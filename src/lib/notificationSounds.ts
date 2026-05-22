@@ -6,6 +6,9 @@ export const FARM_HEALTH_ALERT_VIBRATE: number[] = [400, 120, 400, 120, 500, 120
 
 export const PLAY_FARM_HEALTH_SOUND_MESSAGE = "pf.playFarmHealthSound";
 
+/** Page → service worker: fan out play message to all open windows. */
+export const BROADCAST_FARM_HEALTH_SOUND_MESSAGE = "pf.broadcastFarmHealthSound";
+
 export function isFarmHealthNotificationAlert(tag: string, url?: string): boolean {
   if (tag.startsWith("dose:")) return true;
   if (url?.startsWith("/farm-health")) return true;

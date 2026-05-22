@@ -1,7 +1,7 @@
 import {
+  BROADCAST_FARM_HEALTH_SOUND_MESSAGE,
   farmHealthNotificationExtras,
   isFarmHealthNotificationAlert,
-  PLAY_FARM_HEALTH_SOUND_MESSAGE,
   playFarmHealthAlertSound,
 } from "@/lib/notificationSounds";
 
@@ -107,11 +107,13 @@ export async function showBrowserNotification(input: ShowNotificationInput) {
 
 async function notifyOpenClientsFarmHealthSound(reg: ServiceWorkerRegistration) {
   try {
-    const clients = await reg.matchAll({ type: "window", includeUncontrolled: true });
-    for (const client of clients) {
-      client.postMessage({ type: PLAY_FARM_HEALTH_SOUND_MESSAGE });
+    const sw = reg.active;
+    if (sw) {
+      sw.postMessage({ type: BROADCAST_FARM_HEALTH_SOUND_MESSAGE });
+      return;
     }
   } catch {
     /* ignore */
   }
+  void playFarmHealthAlertSound();
 }
