@@ -1,7 +1,28 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_NAME = "patela-farms-pwa-v2";
+const CACHE_NAME = "patela-farms-pwa-v4";
 const OFFLINE_URL = "/offline";
-const CORE_ASSETS = ["/", "/manifest.json", "/logo.png", OFFLINE_URL];
+const FARM_HEALTH_ALERT_SOUND = "/sounds/farm-health-alert.wav";
+const FARM_HEALTH_VIBRATE = [400, 120, 400, 120, 500, 120, 600];
+const PLAY_FARM_HEALTH_SOUND_MESSAGE = "pf.playFarmHealthSound";
+const CORE_ASSETS = ["/", "/manifest.json", "/logo.png", OFFLINE_URL, FARM_HEALTH_ALERT_SOUND];
+
+function isFarmHealthPayload(payload, url) {
+  return (
+    (typeof payload.tag === "string" && payload.tag.startsWith("dose:")) ||
+    (typeof url === "string" && url.startsWith("/farm-health"))
+  );
+}
+
+async function notifyOpenClientsFarmHealthSound() {
+  try {
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of clients) {
+      client.postMessage({ type: PLAY_FARM_HEALTH_SOUND_MESSAGE });
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -65,12 +86,19 @@ self.addEventListener("push", (event) => {
     const title = payload.title || "Patela Farm";
     const body = payload.body || "You have an update.";
     const url = payload.url || "/";
+    const isFarmHealth = isFarmHealthPayload(payload, url);
+    const sound = isFarmHealth
+      ? new URL(FARM_HEALTH_ALERT_SOUND, self.location.origin).href
+      : undefined;
     await self.registration.showNotification(title, {
       body,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
       data: { url },
+      ...(sound ? { sound } : {}),
+      ...(isFarmHealth ? { vibrate: FARM_HEALTH_VIBRATE } : {}),
     });
+    if (isFarmHealth) await notifyOpenClientsFarmHealthSound();
   };
   event.waitUntil(show());
 });
@@ -101,7 +129,9 @@ function shouldHandleAsAsset(url) {
   // Keep this intentionally simple: cache static assets; don't cache API/data.
   if (url.pathname.startsWith("/_next/")) return true;
   if (url.pathname.startsWith("/assets/")) return true;
-  return [".png", ".jpg", ".jpeg", ".webp", ".svg", ".css", ".js"].some((ext) => url.pathname.endsWith(ext));
+  return [".png", ".jpg", ".jpeg", ".webp", ".svg", ".css", ".js", ".wav", ".mp3", ".ogg"].some((ext) =>
+    url.pathname.endsWith(ext),
+  );
 }
 
 self.addEventListener("fetch", (event) => {

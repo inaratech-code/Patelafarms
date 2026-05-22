@@ -30,6 +30,7 @@ import {
   requestNotificationPermission,
   setBrowserNotificationPrefs,
 } from "@/lib/browserNotifications";
+import { playFarmHealthAlertSound, primeFarmHealthAlertSound } from "@/lib/notificationSounds";
 
 export default function SettingsPage() {
   const session = useMemo(() => getSession(), []);
@@ -350,6 +351,8 @@ export default function SettingsPage() {
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             System notifications for low stock and vaccine dose schedules (overdue, due today, upcoming within 3 days).
+            Farm health dose alerts use a longer, louder chime on Android and in the app; iOS may still use the system
+            notification sound when the app is in the background.
           </p>
         </div>
         <div className="p-6 space-y-4">
@@ -360,12 +363,15 @@ export default function SettingsPage() {
               <label className="flex items-center justify-between gap-4 cursor-pointer">
                 <span className="text-sm font-medium text-slate-800">Enable alert notifications</span>
                 <input
+                  id="settings-notify-enabled"
+                  name="notifyEnabled"
                   type="checkbox"
                   checked={notifyEnabled}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const enabled = e.target.checked;
                     setNotifyEnabled(enabled);
                     setBrowserNotificationPrefs({ enabled });
+                    if (enabled) await primeFarmHealthAlertSound();
                     setNotifyStatus(enabled ? "Notifications enabled in app." : "Notifications turned off.");
                   }}
                   className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
@@ -391,6 +397,7 @@ export default function SettingsPage() {
                     const p = await requestNotificationPermission();
                     setNotifyPermission(p);
                     if (p === "granted") {
+                      await primeFarmHealthAlertSound();
                       setNotifyStatus("Browser notifications allowed.");
                       setNotifyEnabled(true);
                       setBrowserNotificationPrefs({ enabled: true });
@@ -401,6 +408,19 @@ export default function SettingsPage() {
                 >
                   <Bell className="w-4 h-4" />
                   Allow notifications
+                </button>
+              ) : null}
+              {notifyPermission === "granted" ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-800 font-semibold hover:bg-slate-50"
+                  onClick={async () => {
+                    await primeFarmHealthAlertSound();
+                    await playFarmHealthAlertSound();
+                    setNotifyStatus("Played farm health alert sound.");
+                  }}
+                >
+                  Test farm health alert sound
                 </button>
               ) : null}
               {notifyStatus ? <p className="text-sm text-slate-700">{notifyStatus}</p> : null}
@@ -427,10 +447,14 @@ export default function SettingsPage() {
             ) : null}
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Current password</label>
+              <label htmlFor="settings-current-password" className="block text-sm font-medium text-slate-700 mb-1">
+                Current password
+              </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <input
+                  id="settings-current-password"
+                  name="currentPassword"
                   type={showPassword.current ? "text" : "password"}
                   value={passwordForm.current}
                   onChange={(e) => setPasswordForm((v) => ({ ...v, current: e.target.value }))}
@@ -451,10 +475,14 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">New password</label>
+              <label htmlFor="settings-new-password" className="block text-sm font-medium text-slate-700 mb-1">
+                New password
+              </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <input
+                  id="settings-new-password"
+                  name="newPassword"
                   type={showPassword.next ? "text" : "password"}
                   value={passwordForm.next}
                   onChange={(e) => setPasswordForm((v) => ({ ...v, next: e.target.value }))}
@@ -478,10 +506,14 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Confirm new password</label>
+              <label htmlFor="settings-confirm-password" className="block text-sm font-medium text-slate-700 mb-1">
+                Confirm new password
+              </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <input
+                  id="settings-confirm-password"
+                  name="confirmPassword"
                   type={showPassword.confirm ? "text" : "password"}
                   value={passwordForm.confirm}
                   onChange={(e) => setPasswordForm((v) => ({ ...v, confirm: e.target.value }))}
@@ -539,16 +571,26 @@ export default function SettingsPage() {
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Farm Name</label>
-            <input 
-              type="text" 
+            <label htmlFor="settings-farm-name" className="block text-sm font-medium text-slate-700 mb-1">
+              Farm Name
+            </label>
+            <input
+              id="settings-farm-name"
+              name="farmName"
+              type="text"
               defaultValue="Patela Farm"
               className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Currency</label>
-            <select className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white">
+            <label htmlFor="settings-currency" className="block text-sm font-medium text-slate-700 mb-1">
+              Currency
+            </label>
+            <select
+              id="settings-currency"
+              name="currency"
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
+            >
               <option value="NPR">Nepalese Rupee (NPR)</option>
               <option value="INR">Indian Rupee (INR)</option>
               <option value="USD">US Dollar (USD)</option>

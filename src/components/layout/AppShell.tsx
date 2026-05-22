@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { clearSession, getSession, LAST_ACTIVE_KEY, type Session } from "@/lib/auth";
+import { FarmHealthSoundBridge } from "@/components/notifications/FarmHealthSoundBridge";
 import { PushAlertsWatcher } from "@/components/notifications/PushAlertsWatcher";
 import { startAutoSync } from "@/lib/autoSync";
 import { canAccessPath, normalizePermissions, pickDefaultRoute } from "@/lib/rbac";
@@ -152,6 +153,7 @@ export function AppShell(props: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <PushAlertsWatcher />
+      <FarmHealthSoundBridge />
       <div className="min-h-full bg-background flex">
         <SidebarDesktop />
         <div className="flex flex-col flex-1 w-full lg:pl-64 min-w-0">
