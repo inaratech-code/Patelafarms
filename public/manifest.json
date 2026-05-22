@@ -72,9 +72,6 @@
       "url": "/protocol?url=%s"
     }
   ],
-  "scope_extensions": [
-    { "type": "origin", "origin": "https://localhost:3000" }
-  ],
   "widgets": [
     {
       "name": "Patela Farm quick view",
