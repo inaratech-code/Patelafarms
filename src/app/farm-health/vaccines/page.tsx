@@ -161,7 +161,8 @@ export default function VaccinesPage() {
             <span className="min-w-0">Vaccines & medicine stock</span>
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Consumable health inventory — record usage to post expenses and schedule next doses.
+            Consumable health inventory — record usage to post a <strong>Farm health</strong> expense, reduce stock, and
+            schedule the next dose. Shown on Expenses and in profit reports.
           </p>
         </div>
 

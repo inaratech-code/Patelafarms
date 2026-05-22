@@ -153,7 +153,7 @@ export default function DayBookPage() {
                               ? "bg-emerald-50 text-emerald-800"
                               : type === "Purchase"
                                 ? "bg-amber-50 text-amber-900"
-                                : type === "Vaccine"
+                                : type === "Farm health" || type === "Vaccine"
                                   ? "bg-sky-50 text-sky-800"
                                   : "bg-slate-100 text-slate-700"
                           }`}

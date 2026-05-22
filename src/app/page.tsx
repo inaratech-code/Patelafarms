@@ -17,6 +17,7 @@ import {
   netProfitErp,
 } from "@/lib/erp/metrics";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
+import { isGeneralOperatingExpenseEntry } from "@/lib/erp/expenseEntries";
 
 const Sparkline = dynamic(() => import("@/components/dashboard/_Sparkline").then((m) => m.Sparkline), { ssr: false });
 
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const sales = useLiveQuery(() => db.sales.toArray());
   const consumption = useLiveQuery(() => db.consumptionLogs.toArray());
   const losses = useLiveQuery(() => db.inventoryLosses.toArray());
+  const vaccineUsages = useLiveQuery(() => db.vaccineUsages.toArray());
   const ledgerAccounts = useLiveQuery(() => db.ledgerAccounts.toArray());
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray());
 
@@ -55,13 +57,7 @@ export default function Dashboard() {
     .reduce((acc, p) => acc + p.totalCost, 0);
 
   const operatingExpensesThisMonth = (dayBook ?? [])
-    .filter(
-      (e) =>
-        dayBookEntryAffectsCash(e) &&
-        e.type === "Expense" &&
-        e.category !== "Purchase" &&
-        e.time.startsWith(monthKey)
-    )
+    .filter((e) => isGeneralOperatingExpenseEntry(e) && e.time.startsWith(monthKey))
     .reduce((acc, e) => acc + e.amount, 0);
 
   const medicineMonth = useMemo(
@@ -82,10 +78,11 @@ export default function Dashboard() {
         dayBook: dayBook ?? [],
         consumption: consumption ?? [],
         losses: losses ?? [],
+        vaccineUsages: vaccineUsages ?? [],
         monthKey,
         todayKey,
       }),
-    [inventory, sales, purchases, dayBook, consumption, losses, monthKey, todayKey]
+    [inventory, sales, purchases, dayBook, consumption, losses, vaccineUsages, monthKey, todayKey]
   );
 
   const feedToday = useMemo(() => feedExpenseToday(consumption ?? [], todayKey), [consumption, todayKey]);
@@ -324,7 +321,7 @@ export default function Dashboard() {
             <div className="mt-2 text-lg font-semibold text-[#0f172a]">Rs. {purchasesThisMonth.toLocaleString()}</div>
           </div>
           <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
-            <div className="text-xs font-semibold text-[#64748b]">Expenses</div>
+            <div className="text-xs font-semibold text-[#64748b]">Other operating expenses</div>
             <div className="mt-2 text-lg font-semibold text-[#0f172a]">Rs. {operatingExpensesThisMonth.toLocaleString()}</div>
           </div>
           <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
@@ -332,7 +329,7 @@ export default function Dashboard() {
             <div className="mt-2 text-lg font-semibold text-[#0f172a]">Rs. {salesRevenueThisMonth.toLocaleString()}</div>
           </div>
           <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
-            <div className="text-xs font-semibold text-[#64748b]">Medicine / vaccine (month)</div>
+            <div className="text-xs font-semibold text-[#64748b]">Farm health (month)</div>
             <div className="mt-2 text-lg font-semibold text-[#0f172a]">Rs. {medicineMonth.toLocaleString()}</div>
           </div>
           <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">

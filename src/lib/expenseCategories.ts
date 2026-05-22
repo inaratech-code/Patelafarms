@@ -2,8 +2,8 @@ import type { DayBookEntry } from "@/lib/db";
 
 export const DEFAULT_EXPENSE_CATEGORIES = ["Transport", "Wage", "Other"] as const;
 
-/** Categories reserved for other day-book flows (not general expenses). */
-const RESERVED_CATEGORIES = new Set(["Sale", "Purchase", "Vaccine"]);
+/** Categories reserved for other day-book flows (not manual expense form). */
+const RESERVED_CATEGORIES = new Set(["Sale", "Purchase", "Vaccine", "Farm health", "Feed", "Loss"]);
 
 const STORAGE_KEY = "pf.expenseCategories.v1";
 

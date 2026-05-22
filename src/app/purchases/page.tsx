@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type DayBookEntry } from "@/lib/db";
-import { addLedgerEntry, getOrCreateLedgerAccountId } from "@/lib/ledger";
+import { addLedgerEntry, ensureSupplierLedgerAccount } from "@/lib/ledger";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
@@ -137,10 +137,7 @@ export default function PurchasesPage() {
     const totalCost = lineItemsResolved.reduce((acc, li) => acc + li.unitCost * li.quantity, 0);
     const description = `Purchase from ${supplierName} (${purchaseForm.lineItems.length} item(s))`;
 
-    let supplierLedgerId: number | undefined;
-    if (purchaseForm.paymentType === "Due") {
-      supplierLedgerId = await getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" });
-    }
+    const supplierLedgerId = await ensureSupplierLedgerAccount(supplierName);
 
     await db.transaction("rw", db.tables, async () => {
       const purchaseBatchRef = newUid();
@@ -224,7 +221,7 @@ export default function PurchasesPage() {
           })
         );
       } else {
-        const accountId = supplierLedgerId ?? (await getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" }));
+        const accountId = supplierLedgerId;
         const ledgerEntryId = (await addLedgerEntry({ accountId, date, description, debit: 0, credit: totalCost })) as number;
         const acct = await db.ledgerAccounts.get(accountId);
         const entryRow = await db.ledgerEntries.get(ledgerEntryId);
@@ -329,6 +326,7 @@ export default function PurchasesPage() {
                 <option key={name} value={name} />
               ))}
             </datalist>
+            <p className="mt-1 text-xs text-slate-500">New supplier names are added to the ledger automatically.</p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Date</label>

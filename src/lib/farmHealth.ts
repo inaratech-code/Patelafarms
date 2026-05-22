@@ -3,6 +3,7 @@ import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
 import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
+import { FARM_HEALTH_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
 import { enqueueFarmHealthUsageOutbox } from "@/lib/farmHealthSync";
 
 export function isoDateOnly(d: Date) {
@@ -161,7 +162,7 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
       uid: dayUid,
       time: inp.doseDateIso,
       type: "Expense" as const,
-      category: "Vaccine" as const,
+      category: FARM_HEALTH_EXPENSE_CATEGORY,
       amount: expenseAmount,
       description: desc,
       method: "Cash" as const,

@@ -1,5 +1,15 @@
-import type { ConsumptionLog, DayBookEntry, InventoryItem, InventoryLoss, Purchase, Sale } from "@/lib/db";
+import type {
+  ConsumptionLog,
+  DayBookEntry,
+  InventoryItem,
+  InventoryLoss,
+  Purchase,
+  Sale,
+  VaccineUsage,
+} from "@/lib/db";
+import { isFarmHealthExpenseEntry } from "@/lib/erp/expenseEntries";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
+import { isGeneralOperatingExpenseEntry } from "@/lib/erp/expenseEntries";
 
 export type ErpMetricInputs = {
   inventory: InventoryItem[];
@@ -8,6 +18,7 @@ export type ErpMetricInputs = {
   dayBook: DayBookEntry[];
   consumption: ConsumptionLog[];
   losses: InventoryLoss[];
+  vaccineUsages: VaccineUsage[];
   monthKey: string; // YYYY-MM
   todayKey: string; // YYYY-MM-DD local via caller
 };
@@ -61,26 +72,21 @@ export function lossExpenseMonth(losses: InventoryLoss[], monthKey: string) {
 
 export function operatingExpensesMonth(dayBook: DayBookEntry[], monthKey: string) {
   return dayBook
-    .filter(
-      (e) =>
-        dayBookEntryAffectsCash(e) &&
-        e.type === "Expense" &&
-        e.category !== "Purchase" &&
-        e.time.slice(0, 7) === monthKey
-    )
+    .filter((e) => isGeneralOperatingExpenseEntry(e) && e.time.slice(0, 7) === monthKey)
     .reduce((a, e) => a + Number(e.amount ?? 0), 0);
 }
 
-/** Cash / P&L vaccine & medicine expenses posted to day book (this calendar month). */
+/** Farm health (vaccine / medicine) usage cost for the month. */
+export function farmHealthExpenseMonth(usages: VaccineUsage[], monthKey: string) {
+  return usages
+    .filter((u) => monthPrefix(u.doseDate, monthKey))
+    .reduce((a, u) => a + Number(u.expenseAmount ?? 0), 0);
+}
+
+/** Cash / P&L farm health expenses from day book (matches usage log totals when in sync). */
 export function medicineExpenseMonth(dayBook: DayBookEntry[], monthKey: string) {
   return dayBook
-    .filter(
-      (e) =>
-        dayBookEntryAffectsCash(e) &&
-        e.type === "Expense" &&
-        e.category === "Vaccine" &&
-        e.time.slice(0, 7) === monthKey
-    )
+    .filter((e) => isFarmHealthExpenseEntry(e) && e.time.slice(0, 7) === monthKey)
     .reduce((a, e) => a + Number(e.amount ?? 0), 0);
 }
 
@@ -89,8 +95,9 @@ export function netProfitErp(inp: ErpMetricInputs) {
   const buy = purchasesMonth(inp.purchases, inp.monthKey);
   const feed = feedExpenseMonth(inp.consumption, inp.monthKey);
   const loss = lossExpenseMonth(inp.losses, inp.monthKey);
+  const farmHealth = farmHealthExpenseMonth(inp.vaccineUsages, inp.monthKey);
   const other = operatingExpensesMonth(inp.dayBook, inp.monthKey);
-  return gross - buy - feed - loss - other;
+  return gross - buy - feed - loss - farmHealth - other;
 }
 
 export function expenseTrend7d(dayBook: DayBookEntry[]) {

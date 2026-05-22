@@ -58,13 +58,40 @@ export async function getOrCreateLedgerAccountId(params: {
     .first();
 
   if (typeof existing?.id === "number") {
-    if (!existing.uid) await db.ledgerAccounts.update(existing.id, { uid: newUid() });
+    if (!existing.uid) {
+      const uid = newUid();
+      await db.ledgerAccounts.update(existing.id, { uid });
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "ledger.account",
+          entityId: uid,
+          op: "update",
+          payload: { id: existing.id, account: { uid, name, type: params.type } },
+        })
+      );
+    }
     return existing.id;
   }
 
-  const id = await db.ledgerAccounts.add({ uid: newUid(), name, type: params.type });
+  const uid = newUid();
+  const id = await db.ledgerAccounts.add({ uid, name, type: params.type });
   if (typeof id !== "number") throw new Error("Failed to create ledger account");
+
+  await db.outbox.add(
+    makeSyncEvent({
+      entityType: "ledger.account",
+      entityId: uid,
+      op: "create",
+      payload: { id, account: { uid, name, type: params.type } },
+    })
+  );
+
   return id;
+}
+
+/** Ensures a Supplier ledger account exists for purchase / payable flows. */
+export async function ensureSupplierLedgerAccount(supplierName: string) {
+  return getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" });
 }
 
 export async function addLedgerEntry(params: {

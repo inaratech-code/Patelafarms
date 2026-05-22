@@ -7,6 +7,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, type DayBookEntry, type PaymentStatusErp } from "@/lib/db";
 import {
   addLedgerEntry,
+  ensureSupplierLedgerAccount,
   getOrCreateLedgerAccountId,
   getOrCreateCashLedgerAccountId,
 } from "@/lib/ledger";
@@ -393,6 +394,7 @@ export default function OrdersPage() {
 
     const totalCost = lineItemsResolved.reduce((acc, li) => acc + (li.item!.costPrice * li.quantity), 0);
     const description = `Purchase from ${supplierName} (${purchaseForm.lineItems.length} item(s))`;
+    const supplierLedgerId = await ensureSupplierLedgerAccount(supplierName);
 
     await db.transaction('rw', db.tables, async () => {
       const purchaseBatchUid = newUid();
@@ -408,6 +410,7 @@ export default function OrdersPage() {
         const purchase = {
           uid: newUid(),
           supplierName,
+          supplierId: supplierLedgerId,
           itemId: item.id!,
           quantity: li.quantity,
           totalCost: lineCost,
@@ -471,7 +474,7 @@ export default function OrdersPage() {
           })
         );
       } else {
-        ledgerAccountId = await getOrCreateLedgerAccountId({ name: supplierName, type: "Supplier" });
+        ledgerAccountId = supplierLedgerId;
         ledgerEntryId = (await addLedgerEntry({ accountId: ledgerAccountId, date, description, debit: 0, credit: totalCost })) as number;
         const acct = await db.ledgerAccounts.get(ledgerAccountId);
         ledgerAccount = acct?.uid ? { uid: acct.uid, name: acct.name, type: acct.type } : null;
@@ -724,6 +727,7 @@ export default function OrdersPage() {
                   <option key={name} value={name} />
                 ))}
               </datalist>
+              <p className="mt-1 text-xs text-slate-500">New supplier names are added to the ledger automatically.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Date</label>

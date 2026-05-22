@@ -8,6 +8,7 @@ import { db, type ConsumptionCategory } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
+import { FEED_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
 import { assertStockAvailable, isConsumable, resolveItemType } from "@/lib/erp/items";
 import { ArrowLeft } from "lucide-react";
 
@@ -94,7 +95,7 @@ function ConsumptionPageInner() {
           uid: dayUid,
           time: iso,
           type: "Expense" as const,
-          category: "Other" as const,
+          category: FEED_EXPENSE_CATEGORY,
           amount: cost,
           description: desc,
           method: "Cash" as const,
@@ -147,7 +148,8 @@ function ConsumptionPageInner() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Use consumable stock</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Records feed / consumable usage, reduces inventory, and posts an operating expense to the day book (at average cost).
+          Records feed and other consumable usage, reduces inventory, and posts a <strong>Feed</strong> expense to the day
+          book (at average cost). Shown on Expenses and in profit reports.
         </p>
       </div>
 

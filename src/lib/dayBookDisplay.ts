@@ -1,5 +1,13 @@
 import type { DayBookEntry } from "@/lib/db";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
+import {
+  FARM_HEALTH_EXPENSE_CATEGORY,
+  FEED_EXPENSE_CATEGORY,
+  isFarmHealthExpenseEntry,
+  isFeedExpenseEntry,
+  isLossExpenseEntry,
+  LOSS_EXPENSE_CATEGORY,
+} from "@/lib/erp/expenseEntries";
 
 export function dayBookJournalType(e: DayBookEntry): string {
   if (e.refType === "payment") {
@@ -7,9 +15,9 @@ export function dayBookJournalType(e: DayBookEntry): string {
   }
   if (e.category === "Sale") return "Sale";
   if (e.category === "Purchase") return "Purchase";
-  if (e.category === "Vaccine") return "Vaccine";
-  if (e.refType === "inventory_loss") return "Loss";
-  if (e.refType === "consumption") return "Feed use";
+  if (isFarmHealthExpenseEntry(e)) return FARM_HEALTH_EXPENSE_CATEGORY;
+  if (isLossExpenseEntry(e)) return LOSS_EXPENSE_CATEGORY;
+  if (isFeedExpenseEntry(e)) return FEED_EXPENSE_CATEGORY;
   return "Expense";
 }
 

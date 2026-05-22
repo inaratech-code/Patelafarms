@@ -8,6 +8,7 @@ import { db, type InventoryLossType } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
+import { LOSS_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
 
 const lossTypes: Array<{ id: InventoryLossType; label: string; badge: string }> = [
   { id: "Dead", label: "Dead", badge: "bg-rose-500/10 text-rose-700" },
@@ -128,7 +129,7 @@ export default function LossWastagePage() {
           uid: dayUid,
           time: date,
           type: "Expense" as const,
-          category: "Other" as const,
+          category: LOSS_EXPENSE_CATEGORY,
           amount: cost,
           description,
           method: "Cash" as const,
@@ -136,6 +137,8 @@ export default function LossWastagePage() {
           affectsCash: true,
           entryStatus: "Paid" as const,
           party: item.name,
+          refType: "inventory_loss",
+          refId: lossUid,
         };
         const dayBookId = await db.dayBook.add(day);
 
@@ -183,7 +186,10 @@ export default function LossWastagePage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Inventory Loss / Wastage</h1>
-          <div className="mt-1 text-sm text-slate-500">Record dead, damaged, spoiled, missing, theft, or wastage stock.</div>
+          <div className="mt-1 text-sm text-slate-500">
+            Record dead, damaged, spoiled, missing, theft, or wastage stock. Each entry reduces inventory and posts a
+            Loss expense to the day book.
+          </div>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}

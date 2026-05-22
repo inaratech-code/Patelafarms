@@ -8,7 +8,7 @@ import {
   inventoryStockValue,
   localDayKey,
 } from "@/lib/erp/metrics";
-import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
+import { isGeneralOperatingExpenseEntry } from "@/lib/erp/expenseEntries";
 
 function monthKeyNow() {
   const n = new Date();
@@ -26,6 +26,7 @@ export default function ReportsPage() {
   const dayBook = useLiveQuery(() => db.dayBook.toArray()) ?? [];
   const consumption = useLiveQuery(() => db.consumptionLogs.toArray()) ?? [];
   const losses = useLiveQuery(() => db.inventoryLosses.toArray()) ?? [];
+  const vaccineUsages = useLiveQuery(() => db.vaccineUsages.toArray()) ?? [];
 
   const monthKey = monthKeyNow();
   const todayKey = dayKey(new Date());
@@ -67,22 +68,18 @@ export default function ReportsPage() {
       .filter((p) => isWithinRange(p.date))
       .reduce((a, p) => a + Number(p.totalCost ?? 0), 0);
     const dayBookExpenses = dayBook
-      .filter(
-        (e) =>
-          dayBookEntryAffectsCash(e) &&
-          e.type === "Expense" &&
-          e.category !== "Purchase" &&
-          isWithinRange(e.time)
-      )
+      .filter((e) => isGeneralOperatingExpenseEntry(e) && isWithinRange(e.time))
       .reduce((a, e) => a + Number(e.amount ?? 0), 0);
     const feedCost = consumption.filter((c) => isWithinRange(c.date)).reduce((a, c) => a + Number(c.cost ?? 0), 0);
     const lossCost = losses.filter((l) => isWithinRange(l.date)).reduce((a, l) => a + Number(l.estimatedCost ?? 0), 0);
+    const farmHealthCost = vaccineUsages
+      .filter((u) => isWithinRange(u.doseDate))
+      .reduce((a, u) => a + Number(u.expenseAmount ?? 0), 0);
 
-    // Simple P&L for the selected period (range-based).
-    const net = salesTotal - purchasesTotal - feedCost - lossCost - dayBookExpenses;
+    const net = salesTotal - purchasesTotal - feedCost - lossCost - farmHealthCost - dayBookExpenses;
 
-    return { salesTotal, purchasesTotal, dayBookExpenses, feedCost, lossCost, net };
-  }, [sales, purchases, dayBook, consumption, losses, periodRange, period]);
+    return { salesTotal, purchasesTotal, dayBookExpenses, feedCost, lossCost, farmHealthCost, net };
+  }, [sales, purchases, dayBook, consumption, losses, vaccineUsages, periodRange, period]);
 
   const stockValue = useMemo(() => inventoryStockValue(inventory), [inventory]);
 
@@ -169,11 +166,12 @@ export default function ReportsPage() {
             </button>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 text-sm">
           <ReportStat label="Sales" value={summary.salesTotal} />
           <ReportStat label="Purchases" value={summary.purchasesTotal} />
-          <ReportStat label="Day-book expenses" value={summary.dayBookExpenses} />
-          <ReportStat label="Feed usage (cost)" value={summary.feedCost} />
+          <ReportStat label="Feed (consumables)" value={summary.feedCost} />
+          <ReportStat label="Farm health" value={summary.farmHealthCost} />
+          <ReportStat label="Other operating expenses" value={summary.dayBookExpenses} />
         </div>
       </section>
 
@@ -182,13 +180,14 @@ export default function ReportsPage() {
         <div className="mt-4 space-y-2 text-sm">
           <Row label="Gross sales" value={summary.salesTotal} />
           <Row label="Purchases" value={summary.purchasesTotal} outflow />
-          <Row label="Feed expense (consumption)" value={summary.feedCost} outflow />
-          <Row label="Loss / mortality cost" value={summary.lossCost} outflow />
-          <Row label="Day-book expenses" value={summary.dayBookExpenses} outflow />
+          <Row label="Feed expense (consumables)" value={summary.feedCost} outflow />
+          <Row label="Farm health (medicine)" value={summary.farmHealthCost} outflow />
+          <Row label="Loss / wastage" value={summary.lossCost} outflow />
+          <Row label="Other operating expenses" value={summary.dayBookExpenses} outflow />
           <Row label="Net profit" value={summary.net} emphasize />
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          Net profit = sales − purchases − feed − loss − day-book expenses (range based).
+          Net profit = sales − purchases − feed − farm health − loss − other operating expenses (range based).
         </p>
       </section>
 

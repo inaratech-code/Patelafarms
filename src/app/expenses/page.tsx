@@ -11,13 +11,14 @@ import { addLedgerEntry, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { useRouter } from "next/navigation";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 import { buildExpenseCategoryOptions, rememberExpenseCategory } from "@/lib/expenseCategories";
+import { expenseDisplayCategory, isCashExpenseEntry } from "@/lib/erp/expenseEntries";
 
 export default function ExpensesPage() {
   const router = useRouter();
   const entriesRaw = useLiveQuery(() => db.dayBook.where("type").equals("Expense").toArray());
   const financialAccounts = useLiveQuery(() => db.financialAccounts.toArray()) || [];
 
-  const entries = useMemo(() => (entriesRaw ?? []).filter((e) => e.category !== "Purchase"), [entriesRaw]);
+  const entries = useMemo(() => (entriesRaw ?? []).filter((e) => isCashExpenseEntry(e)), [entriesRaw]);
 
   const [showForm, setShowForm] = useState(false);
   const [showGate, setShowGate] = useState(false);
@@ -137,7 +138,10 @@ export default function ExpensesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Expenses</h1>
-          <div className="mt-1 text-sm text-slate-500">This month: Rs. {totalThisMonth.toLocaleString()}</div>
+          <div className="mt-1 text-sm text-slate-500">
+            This month: Rs. {totalThisMonth.toLocaleString()} — includes feed (consumables), farm health medicine, loss/wastage,
+            wages, transport, and other expenses.
+          </div>
         </div>
         <button
           onClick={() => {
@@ -308,7 +312,7 @@ export default function ExpensesPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                     {new Date(e.time).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{e.category}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{expenseDisplayCategory(e)}</td>
                   <td className="px-6 py-4 text-sm text-slate-900">{e.description}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-slate-900">
                     Rs. {e.amount.toLocaleString()}
