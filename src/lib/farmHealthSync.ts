@@ -45,6 +45,7 @@ export async function enqueueFarmHealthUsageOutbox(params: {
       payload: {
         vaccine: vaccinePayload,
         usage: usagePayload,
+        vaccineDelta: { vaccineUid, delta: -Number(params.usage.qtyUsed ?? 0) },
         reminder: params.reminder
           ? { ...params.reminder, id: undefined, vaccineUsageId: undefined, usageUid }
           : undefined,
