@@ -10,18 +10,30 @@ import {
   dayBookPartyLabel,
   dayBookStatusLabel,
 } from "@/lib/dayBookDisplay";
+import { localDayKey } from "@/lib/erp/metrics";
+import {
+  FEED_EXPENSE_CATEGORY,
+  FARM_HEALTH_EXPENSE_CATEGORY,
+  LOSS_EXPENSE_CATEGORY,
+} from "@/lib/erp/expenseEntries";
 
-function formatISODate(d: Date) {
-  return d.toISOString().slice(0, 10);
+function dayBookTypeBadgeClass(type: string): string {
+  if (type === "Sale") return "bg-emerald-50 text-emerald-800";
+  if (type === "Purchase") return "bg-amber-50 text-amber-900";
+  if (type === FARM_HEALTH_EXPENSE_CATEGORY || type === "Vaccine") return "bg-sky-50 text-sky-800";
+  if (type === FEED_EXPENSE_CATEGORY) return "bg-orange-50 text-orange-900";
+  if (type === LOSS_EXPENSE_CATEGORY) return "bg-rose-50 text-rose-800";
+  if (type === "Receipt") return "bg-emerald-50 text-emerald-800";
+  if (type === "Payment") return "bg-rose-50 text-rose-800";
+  return "bg-slate-100 text-slate-700";
 }
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function localDayKeyFromIsoTime(isoTime: string) {
-  const d = new Date(isoTime);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+function formatMoney(amount: number): string {
+  const hasFraction = Math.abs(amount % 1) > 0.001;
+  return amount.toLocaleString(undefined, {
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatTime(isoTime: string) {
@@ -31,11 +43,11 @@ function formatTime(isoTime: string) {
 
 export default function DayBookPage() {
   const allEntries = useLiveQuery(() => db.dayBook.toArray()) || [];
-  const [selectedDate, setSelectedDate] = useState(() => formatISODate(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => localDayKey(new Date()));
 
   const rows = useMemo(() => {
     return allEntries
-      .filter((e) => localDayKeyFromIsoTime(e.time) === selectedDate)
+      .filter((e) => localDayKey(new Date(e.time)) === selectedDate)
       .slice()
       .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   }, [allEntries, selectedDate]);
@@ -43,7 +55,7 @@ export default function DayBookPage() {
   const summary = useMemo(() => {
     let opening = 0;
     for (const e of allEntries) {
-      if (localDayKeyFromIsoTime(e.time) >= selectedDate) continue;
+      if (localDayKey(new Date(e.time)) >= selectedDate) continue;
       if (!dayBookEntryAffectsCash(e)) continue;
       opening += e.type === "Income" ? e.amount : -e.amount;
     }
@@ -91,27 +103,27 @@ export default function DayBookPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-medium text-slate-500">Opening (cash)</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">Rs. {summary.opening.toLocaleString()}</div>
+          <div className="mt-1 text-lg font-semibold text-slate-900">Rs. {formatMoney(summary.opening)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-medium text-slate-500">Cash in</div>
-          <div className="mt-1 text-lg font-semibold text-emerald-700">Rs. {summary.cashIn.toLocaleString()}</div>
+          <div className="mt-1 text-lg font-semibold text-emerald-700">Rs. {formatMoney(summary.cashIn)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-medium text-slate-500">Cash out</div>
-          <div className="mt-1 text-lg font-semibold text-rose-700">Rs. {summary.cashOut.toLocaleString()}</div>
+          <div className="mt-1 text-lg font-semibold text-rose-700">Rs. {formatMoney(summary.cashOut)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Credit sales</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">Rs. {summary.creditSales.toLocaleString()}</div>
+          <div className="text-xs font-medium text-slate-500">Credit sales (journal)</div>
+          <div className="mt-1 text-lg font-semibold text-slate-900">Rs. {formatMoney(summary.creditSales)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Credit purchases</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">Rs. {summary.creditPurchases.toLocaleString()}</div>
+          <div className="text-xs font-medium text-slate-500">Credit purchases (journal)</div>
+          <div className="mt-1 text-lg font-semibold text-slate-900">Rs. {formatMoney(summary.creditPurchases)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-medium text-slate-500">Net cash (close)</div>
-          <div className="mt-1 text-lg font-semibold text-[#0871b3]">Rs. {summary.netCash.toLocaleString()}</div>
+          <div className="mt-1 text-lg font-semibold text-[#0871b3]">Rs. {formatMoney(summary.netCash)}</div>
         </div>
       </div>
 
@@ -148,22 +160,14 @@ export default function DayBookPage() {
                       <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatTime(e.time)}</td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            type === "Sale"
-                              ? "bg-emerald-50 text-emerald-800"
-                              : type === "Purchase"
-                                ? "bg-amber-50 text-amber-900"
-                                : type === "Farm health" || type === "Vaccine"
-                                  ? "bg-sky-50 text-sky-800"
-                                  : "bg-slate-100 text-slate-700"
-                          }`}
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${dayBookTypeBadgeClass(type)}`}
                         >
                           {type}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-900">{party}</td>
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                        {e.type === "Income" ? "+" : "-"} Rs. {e.amount.toLocaleString()}
+                        {e.type === "Income" ? "+" : "-"} Rs. {formatMoney(e.amount)}
                       </td>
                       <td className="px-4 py-3 text-slate-700">{mode}</td>
                       <td className="px-4 py-3">

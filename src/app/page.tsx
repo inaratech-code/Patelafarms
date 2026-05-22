@@ -12,8 +12,10 @@ import {
   expenseTrend7d,
   feedExpenseToday,
   localDayKey,
+  localMonthKey,
   lossTrend7d,
   medicineExpenseMonth,
+  monthKeyFromStoredInstant,
   netProfitErp,
 } from "@/lib/erp/metrics";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
@@ -50,14 +52,14 @@ export default function Dashboard() {
   const isOnline = useSyncExternalStore(subscribeOnlineStatus, getOnlineSnapshot, getOnlineServerSnapshot);
 
   const todayKey = localDayKey(new Date());
-  const monthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const monthKey = localMonthKey(new Date());
 
   const purchasesThisMonth = (purchases ?? [])
-    .filter((p) => new Date(p.date).toISOString().slice(0, 7) === monthKey)
+    .filter((p) => monthKeyFromStoredInstant(p.date) === monthKey)
     .reduce((acc, p) => acc + p.totalCost, 0);
 
   const operatingExpensesThisMonth = (dayBook ?? [])
-    .filter((e) => isGeneralOperatingExpenseEntry(e) && e.time.startsWith(monthKey))
+    .filter((e) => isGeneralOperatingExpenseEntry(e) && monthKeyFromStoredInstant(e.time) === monthKey)
     .reduce((acc, e) => acc + e.amount, 0);
 
   const medicineMonth = useMemo(
@@ -66,7 +68,7 @@ export default function Dashboard() {
   );
 
   const salesRevenueThisMonth = (sales ?? [])
-    .filter((s) => new Date(s.date).toISOString().slice(0, 7) === monthKey)
+    .filter((s) => monthKeyFromStoredInstant(s.date) === monthKey)
     .reduce((acc, s) => acc + s.totalPrice, 0);
 
   const netProfitErpMonth = useMemo(
@@ -195,7 +197,7 @@ export default function Dashboard() {
           dayBookEntryAffectsCash(e) &&
           e.type === "Expense" &&
           e.category !== "Purchase" &&
-          e.time.startsWith(todayKey)
+          localDayKey(new Date(e.time)) === todayKey
       )
       .reduce((acc, e) => acc + e.amount, 0);
 

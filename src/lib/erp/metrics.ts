@@ -23,10 +23,6 @@ export type ErpMetricInputs = {
   todayKey: string; // YYYY-MM-DD local via caller
 };
 
-function monthPrefix(iso: string, monthKey: string) {
-  return new Date(iso).toISOString().slice(0, 7) === monthKey;
-}
-
 /** Calendar YYYY-MM-DD in the user's local timezone (not UTC). */
 export function localDayKey(d: Date) {
   const y = d.getFullYear();
@@ -35,8 +31,21 @@ export function localDayKey(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-function dayKeyFromStoredInstant(iso: string) {
+/** Calendar YYYY-MM in local timezone. */
+export function localMonthKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function dayKeyFromStoredInstant(iso: string) {
   return localDayKey(new Date(iso));
+}
+
+export function monthKeyFromStoredInstant(iso: string) {
+  return localMonthKey(new Date(iso));
+}
+
+function monthPrefix(iso: string, monthKey: string) {
+  return monthKeyFromStoredInstant(iso) === monthKey;
 }
 
 /** SUM(qty * avgCost) — falls back to costPrice when avgCost missing. */
@@ -72,7 +81,7 @@ export function lossExpenseMonth(losses: InventoryLoss[], monthKey: string) {
 
 export function operatingExpensesMonth(dayBook: DayBookEntry[], monthKey: string) {
   return dayBook
-    .filter((e) => isGeneralOperatingExpenseEntry(e) && e.time.slice(0, 7) === monthKey)
+    .filter((e) => isGeneralOperatingExpenseEntry(e) && monthKeyFromStoredInstant(e.time) === monthKey)
     .reduce((a, e) => a + Number(e.amount ?? 0), 0);
 }
 
@@ -86,7 +95,7 @@ export function farmHealthExpenseMonth(usages: VaccineUsage[], monthKey: string)
 /** Cash / P&L farm health expenses from day book (matches usage log totals when in sync). */
 export function medicineExpenseMonth(dayBook: DayBookEntry[], monthKey: string) {
   return dayBook
-    .filter((e) => isFarmHealthExpenseEntry(e) && e.time.slice(0, 7) === monthKey)
+    .filter((e) => isFarmHealthExpenseEntry(e) && monthKeyFromStoredInstant(e.time) === monthKey)
     .reduce((a, e) => a + Number(e.amount ?? 0), 0);
 }
 

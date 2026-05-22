@@ -7,13 +7,11 @@ import { db } from "@/lib/db";
 import {
   inventoryStockValue,
   localDayKey,
+  localMonthKey,
+  monthKeyFromStoredInstant,
 } from "@/lib/erp/metrics";
 import { isGeneralOperatingExpenseEntry } from "@/lib/erp/expenseEntries";
 
-function monthKeyNow() {
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
-}
 
 function dayKey(d: Date) {
   return localDayKey(d);
@@ -28,7 +26,7 @@ export default function ReportsPage() {
   const losses = useLiveQuery(() => db.inventoryLosses.toArray()) ?? [];
   const vaccineUsages = useLiveQuery(() => db.vaccineUsages.toArray()) ?? [];
 
-  const monthKey = monthKeyNow();
+  const monthKey = localMonthKey(new Date());
   const todayKey = dayKey(new Date());
 
   const [period, setPeriod] = useState<"day" | "week" | "month">("day");
@@ -89,7 +87,7 @@ export default function ReportsPage() {
     const m = new Map<number, { qty: number; revenue: number }>();
     for (const s of sales) {
       if (period === "month") {
-        if (!monthPrefix(s.date, monthKey)) continue;
+        if (monthKeyFromStoredInstant(s.date) !== monthKey) continue;
       } else {
         if (!isWithinRange(s.date)) continue;
       }
@@ -274,10 +272,6 @@ export default function ReportsPage() {
       </section>
     </div>
   );
-}
-
-function monthPrefix(iso: string, mk: string) {
-  return new Date(iso).toISOString().slice(0, 7) === mk;
 }
 
 function ReportStat(props: { label: string; value: number }) {

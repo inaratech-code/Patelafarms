@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 import { buildExpenseCategoryOptions, rememberExpenseCategory } from "@/lib/expenseCategories";
 import { expenseDisplayCategory, isCashExpenseEntry } from "@/lib/erp/expenseEntries";
+import { localMonthKey, monthKeyFromStoredInstant } from "@/lib/erp/metrics";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -40,10 +41,9 @@ export default function ExpensesPage() {
   const categoryOptions = useMemo(() => buildExpenseCategoryOptions(entries), [entries]);
 
   const totalThisMonth = useMemo(() => {
-    const now = new Date();
-    const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const key = localMonthKey(new Date());
     return entries
-      .filter((e) => e.time.startsWith(key) && dayBookEntryAffectsCash(e))
+      .filter((e) => monthKeyFromStoredInstant(e.time) === key && dayBookEntryAffectsCash(e))
       .reduce((acc, e) => acc + e.amount, 0);
   }, [entries]);
 
