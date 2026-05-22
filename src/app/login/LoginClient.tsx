@@ -92,10 +92,14 @@ export function LoginClient() {
 
         <form onSubmit={onSubmit} className="p-8 space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Username</label>
+            <label htmlFor="login-username" className="block text-sm font-medium mb-1">
+              Username
+            </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
+                id="login-username"
+                name="username"
                 value={form.username}
                 onChange={(e) => setForm((v) => ({ ...v, username: e.target.value }))}
                 className="w-full pl-9 pr-3 py-2 border rounded-md bg-white"
@@ -106,10 +110,14 @@ export function LoginClient() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
+            <label htmlFor="login-password" className="block text-sm font-medium mb-1">
+              Password
+            </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               <input
+                id="login-password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))}

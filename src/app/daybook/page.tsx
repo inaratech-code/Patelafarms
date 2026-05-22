@@ -74,8 +74,12 @@ export default function DayBookPage() {
           <div className="text-sm text-slate-500">All movements for the day — cash and credit journal lines</div>
         </div>
         <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-slate-600">Date</label>
+          <label htmlFor="daybook-date" className="text-sm font-medium text-slate-600">
+            Date
+          </label>
           <input
+            id="daybook-date"
+            name="daybookDate"
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}

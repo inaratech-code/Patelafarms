@@ -153,8 +153,12 @@ function ConsumptionPageInner() {
 
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl border border-slate-200 space-y-4 shadow-sm">
         <div>
-          <label className="block text-sm font-medium mb-1">Item (consumable)</label>
+          <label htmlFor="consumption-item" className="block text-sm font-medium mb-1">
+            Item (consumable)
+          </label>
           <select
+            id="consumption-item"
+            name="consumptionItem"
             required
             className="w-full px-3 py-2 border rounded-md bg-white"
             value={itemId || ""}
@@ -174,8 +178,12 @@ function ConsumptionPageInner() {
           ) : null}
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Quantity</label>
+          <label htmlFor="consumption-quantity" className="block text-sm font-medium mb-1">
+            Quantity
+          </label>
           <input
+            id="consumption-quantity"
+            name="consumptionQuantity"
             className="w-full px-3 py-2 border rounded-md"
             value={qtyStr}
             onChange={(e) => setQtyStr(e.target.value.replace(/[^\d.]/g, ""))}
@@ -183,8 +191,16 @@ function ConsumptionPageInner() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Category</label>
-          <select className="w-full px-3 py-2 border rounded-md bg-white" value={category} onChange={(e) => setCategory(e.target.value as ConsumptionCategory)}>
+          <label htmlFor="consumption-category" className="block text-sm font-medium mb-1">
+            Category
+          </label>
+          <select
+            id="consumption-category"
+            name="consumptionCategory"
+            className="w-full px-3 py-2 border rounded-md bg-white"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as ConsumptionCategory)}
+          >
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
@@ -193,12 +209,30 @@ function ConsumptionPageInner() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Date</label>
-          <input type="date" className="w-full px-3 py-2 border rounded-md" value={date} onChange={(e) => setDate(e.target.value)} />
+          <label htmlFor="consumption-date" className="block text-sm font-medium mb-1">
+            Date
+          </label>
+          <input
+            id="consumption-date"
+            name="consumptionDate"
+            type="date"
+            className="w-full px-3 py-2 border rounded-md"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Notes (optional)</label>
-          <textarea className="w-full px-3 py-2 border rounded-md text-sm" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <label htmlFor="consumption-notes" className="block text-sm font-medium mb-1">
+            Notes (optional)
+          </label>
+          <textarea
+            id="consumption-notes"
+            name="consumptionNotes"
+            className="w-full px-3 py-2 border rounded-md text-sm"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
         </div>
         <button type="submit" disabled={saving} className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50">
           {saving ? "Saving…" : "Record usage"}
