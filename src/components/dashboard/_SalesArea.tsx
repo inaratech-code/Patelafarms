@@ -18,7 +18,12 @@ export function SalesArea(props: {
   data: Array<{ label: string; total: number }>;
 }) {
   return (
-    <ResponsiveContainer width="100%" height={288} minWidth={0} minHeight={0}>
+    <ResponsiveContainer
+      width="100%"
+      height={288}
+      minWidth={0}
+      initialDimension={{ width: 800, height: 288 }}
+    >
       <AreaChart data={props.data} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">

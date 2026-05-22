@@ -286,20 +286,20 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm p-5">
           <div className="text-sm font-medium text-[#64748b]">Expense trend (7 days)</div>
-          <div className="mt-3 h-10">
-            <Sparkline data={expenseSpark7} />
+          <div className="mt-3 h-10 w-full min-h-0 min-w-0">
+            <Sparkline data={expenseSpark7} height={40} />
           </div>
         </div>
         <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm p-5">
           <div className="text-sm font-medium text-[#64748b]">Feed consumption (7 days)</div>
-          <div className="mt-3 h-10">
-            <Sparkline data={feedSpark7} />
+          <div className="mt-3 h-10 w-full min-h-0 min-w-0">
+            <Sparkline data={feedSpark7} height={40} />
           </div>
         </div>
         <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm p-5">
           <div className="text-sm font-medium text-[#64748b]">Mortality / loss cost (7 days)</div>
-          <div className="mt-3 h-10">
-            <Sparkline data={lossSpark7} />
+          <div className="mt-3 h-10 w-full min-h-0 min-w-0">
+            <Sparkline data={lossSpark7} height={40} />
           </div>
         </div>
       </div>

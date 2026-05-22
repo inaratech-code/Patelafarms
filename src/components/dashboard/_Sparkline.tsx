@@ -6,9 +6,19 @@ function formatRs(n: number) {
   return `Rs. ${n.toLocaleString()}`;
 }
 
-export function Sparkline(props: { data: Array<{ x: string; y: number }> }) {
+export function Sparkline(props: {
+  data: Array<{ x: string; y: number }>;
+  /** Pixel height; must match the parent wrapper (e.g. h-8 → 32, h-10 → 40). */
+  height?: number;
+}) {
+  const height = props.height ?? 32;
   return (
-    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+    <ResponsiveContainer
+      width="100%"
+      height={height}
+      minWidth={0}
+      initialDimension={{ width: 400, height }}
+    >
       <LineChart data={props.data} margin={{ top: 4, right: 10, bottom: 2, left: 2 }}>
         <Tooltip
           cursor={false}

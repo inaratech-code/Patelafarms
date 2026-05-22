@@ -66,8 +66,8 @@ export function StatsCards(props: { cards: StatCard[] }) {
             </div>
 
             {c.spark && c.spark.length > 0 ? (
-              <div className="mt-2 h-7 sm:h-8">
-                <Sparkline data={c.spark} />
+              <div className="mt-2 h-8 w-full min-h-0 min-w-0">
+                <Sparkline data={c.spark} height={32} />
               </div>
             ) : null}
           </div>

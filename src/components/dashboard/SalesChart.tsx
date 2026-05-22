@@ -80,7 +80,7 @@ export function SalesChart(props: {
       </div>
 
       <div className="p-6">
-        <div className="h-72">
+        <div className="h-72 w-full min-h-0 min-w-0">
           <SalesArea data={data} />
         </div>
       </div>
