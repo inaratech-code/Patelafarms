@@ -8,6 +8,38 @@ import { localDayKey } from "@/lib/erp/metrics";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
 import { vaccineDateEnteredRecently } from "@/lib/farmHealth";
 
+function DoseListItem(props: {
+  title: string;
+  batch: string;
+  date: string;
+  datePrefix?: string;
+  tone: "upcoming" | "due_today" | "overdue";
+}) {
+  const box =
+    props.tone === "overdue"
+      ? "border-red-200 bg-red-50"
+      : props.tone === "due_today"
+        ? "border-orange-300 bg-orange-50"
+        : "border-slate-200 bg-slate-50";
+  const titleCls =
+    props.tone === "overdue" ? "text-red-900" : props.tone === "due_today" ? "text-orange-900" : "text-slate-900";
+  const metaCls =
+    props.tone === "overdue" ? "text-red-700" : props.tone === "due_today" ? "text-orange-800" : "text-slate-500";
+
+  return (
+    <li className={`rounded-lg border px-3 py-2 text-sm min-w-0 ${box}`}>
+      <div className={`font-medium break-words ${titleCls}`}>
+        {props.title}
+        {props.batch ? <span className={metaCls}> · {props.batch}</span> : null}
+      </div>
+      <div className={`text-xs mt-0.5 ${metaCls}`}>
+        {props.datePrefix ?? ""}
+        {props.date}
+      </div>
+    </li>
+  );
+}
+
 export function HealthSnapshot() {
   const vaccines = useLiveQuery(() => db.vaccines.toArray()) || [];
   const reminders = useLiveQuery(() => db.doseReminders.toArray()) || [];
@@ -36,7 +68,7 @@ export function HealthSnapshot() {
   }, [reminders, usages, vaccines, todayKey]);
 
   return (
-    <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm overflow-hidden">
+    <div className="rounded-2xl bg-white border border-[#e2e8f0] shadow-sm overflow-hidden min-w-0">
       <div className="p-4 sm:p-6 border-b border-[#e2e8f0] flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="text-sm font-medium text-[#64748b]">Farm health</div>
@@ -49,54 +81,57 @@ export function HealthSnapshot() {
           Schedule
         </Link>
       </div>
-      <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
+      <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
+        <div className="min-w-0">
           <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">Upcoming / due</div>
           <ul className="mt-2 space-y-2">
             {upcoming.length === 0 ? (
               <li className="text-sm text-slate-500">No upcoming doses.</li>
             ) : (
               upcoming.map(({ r, live, title, batch }) => (
-                <li
+                <DoseListItem
                   key={r.id ?? r.uid}
-                  className={`rounded-lg border px-3 py-2 text-sm ${
-                    live === "due_today" ? "border-orange-300 bg-orange-50" : "border-slate-200 bg-slate-50"
-                  }`}
-                >
-                  <span className="font-medium text-slate-900">{title}</span>
-                  {batch ? <span className="text-slate-600"> · {batch}</span> : null}
-                  <div className="text-xs text-slate-500 mt-0.5">{r.reminderDate}</div>
-                </li>
+                  title={title}
+                  batch={batch}
+                  date={r.reminderDate}
+                  tone={live === "due_today" ? "due_today" : "upcoming"}
+                />
               ))
             )}
           </ul>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">Overdue</div>
           <ul className="mt-2 space-y-2">
             {overdue.length === 0 ? (
               <li className="text-sm text-slate-500">None — great job.</li>
             ) : (
               overdue.map(({ r, title, batch }) => (
-                <li key={r.id ?? r.uid} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm">
-                  <span className="font-medium text-red-900">{title}</span>
-                  {batch ? <span className="text-red-800"> · {batch}</span> : null}
-                  <div className="text-xs text-red-700 mt-0.5">Was due {r.reminderDate}</div>
-                </li>
+                <DoseListItem
+                  key={r.id ?? r.uid}
+                  title={title}
+                  batch={batch}
+                  date={r.reminderDate}
+                  datePrefix="Was due "
+                  tone="overdue"
+                />
               ))
             )}
           </ul>
         </div>
-        <div className="md:col-span-2">
-          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">Recent stock (entered in last 14 days)</div>
-          <ul className="mt-2 flex flex-wrap gap-2">
+        <div className="md:col-span-2 min-w-0">
+          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">
+            <span className="sm:hidden">Recent stock</span>
+            <span className="hidden sm:inline">Recent stock (entered in last 14 days)</span>
+          </div>
+          <ul className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {alerts.length === 0 ? (
               <li className="text-sm text-slate-500">No items entered in the last 14 days.</li>
             ) : (
               alerts.map((v) => (
                 <li
                   key={v.id ?? v.uid}
-                  className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900"
+                  className="rounded-lg sm:rounded-full border border-amber-200 bg-amber-50 px-3 py-2 sm:py-1 text-xs font-medium text-amber-900 break-words max-w-full"
                 >
                   {v.name}
                   {v.purchaseDate ? ` · entered ${v.purchaseDate}` : ""}

@@ -82,11 +82,19 @@ export default function HealthLogsPage() {
                 <label className="block font-medium text-slate-700 mb-1">Notes</label>
                 <textarea className="w-full px-3 py-2 border rounded-md" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-md border border-slate-200">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-md border border-slate-200"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={saving} className="px-4 py-2 rounded-md bg-primary text-white disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-md bg-primary text-white disabled:opacity-50"
+                >
                   Save
                 </button>
               </div>

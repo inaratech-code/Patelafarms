@@ -10,21 +10,30 @@ export type FarmHealthSectionId = (typeof LINKS)[number]["id"];
 
 export function FarmHealthSubnav(props: { current: FarmHealthSectionId }) {
   return (
-    <nav className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500" aria-label="Farm health sections">
-      {LINKS.map((link, i) => (
-        <span key={link.id} className="inline-flex items-center gap-2">
-          {i > 0 ? <span className="text-slate-300" aria-hidden="true">
-              ·
-            </span> : null}
-          {props.current === link.id ? (
-            <span className="font-semibold text-slate-800">{link.label}</span>
-          ) : (
-            <Link href={link.href} className="text-primary font-medium hover:underline">
-              {link.label}
-            </Link>
-          )}
-        </span>
-      ))}
+    <nav
+      className="-mx-1 flex gap-2 overflow-x-auto pb-1 scrollbar-thin"
+      aria-label="Farm health sections"
+    >
+      {LINKS.map((link) => {
+        const active = props.current === link.id;
+        return active ? (
+          <span
+            key={link.id}
+            aria-current="page"
+            className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold bg-primary text-white"
+          >
+            {link.label}
+          </span>
+        ) : (
+          <Link
+            key={link.id}
+            href={link.href}
+            className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 whitespace-nowrap"
+          >
+            {link.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }

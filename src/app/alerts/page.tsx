@@ -150,37 +150,46 @@ export default function AlertsPage() {
           )}
         </div>
 
-        <div className="rounded-xl bg-white shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-            <div>
+        <div className="rounded-xl bg-white shadow-sm border border-slate-100 overflow-hidden min-w-0">
+          <div className="p-4 sm:p-6 border-b border-slate-100 flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <div className="text-sm font-medium text-slate-500">Farm health</div>
-              <div className="mt-1 text-lg font-semibold text-slate-900">
+              <div className="mt-1 text-base sm:text-lg font-semibold text-slate-900 break-words">
                 {doseAlerts.urgent.length} urgent dose(s) · {doseAlerts.recentEntered.length} recent stock
               </div>
             </div>
-            <Syringe className="w-6 h-6 text-sky-600" />
+            <Syringe className="w-6 h-6 text-sky-600 shrink-0" />
           </div>
-          <div className="p-6 space-y-3 text-sm">
+          <div className="p-4 sm:p-6 space-y-3 text-sm">
             {doseAlerts.urgent.length === 0 && doseAlerts.soon.length === 0 && doseAlerts.recentEntered.length === 0 ? (
               <div className="text-slate-500">No vaccine alerts.</div>
             ) : (
               <>
                 {doseAlerts.urgent.map((r) => (
-                  <div key={r.id} className="flex justify-between gap-2 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2">
-                    <span className="font-medium text-rose-900">{r.title ?? "Dose"}</span>
-                    <span className="text-rose-800 shrink-0">{r.reminderDate}</span>
+                  <div
+                    key={r.id}
+                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2 min-w-0"
+                  >
+                    <span className="font-medium text-rose-900 break-words min-w-0">{r.title ?? "Dose"}</span>
+                    <span className="text-rose-800 text-xs sm:text-sm shrink-0">{r.reminderDate}</span>
                   </div>
                 ))}
                 {doseAlerts.soon.map((r) => (
-                  <div key={r.id} className="flex justify-between gap-2 rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2">
-                    <span className="font-medium text-orange-900">{r.title ?? "Dose"}</span>
-                    <span className="text-orange-800 shrink-0">{r.reminderDate}</span>
+                  <div
+                    key={r.id}
+                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2 min-w-0"
+                  >
+                    <span className="font-medium text-orange-900 break-words min-w-0">{r.title ?? "Dose"}</span>
+                    <span className="text-orange-800 text-xs sm:text-sm shrink-0">{r.reminderDate}</span>
                   </div>
                 ))}
                 {doseAlerts.recentEntered.map((v) => (
-                  <div key={v.id} className="flex justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
-                    <span className="font-medium text-amber-900">{v.name}</span>
-                    <span className="text-amber-800 shrink-0">entered {v.purchaseDate ?? "—"}</span>
+                  <div
+                    key={v.id}
+                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 min-w-0"
+                  >
+                    <span className="font-medium text-amber-900 break-words min-w-0">{v.name}</span>
+                    <span className="text-amber-800 text-xs sm:text-sm shrink-0">entered {v.purchaseDate ?? "—"}</span>
                   </div>
                 ))}
               </>

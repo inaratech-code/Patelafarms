@@ -247,16 +247,16 @@ export default function VaccinesPage() {
                 <label className="block font-medium text-slate-700 mb-1">
                   Re-dose interval <span className="text-red-600 font-semibold">*</span>
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     inputMode="numeric"
                     required
-                    className="w-full px-3 py-2 border rounded-md"
+                    className="w-full min-w-0 px-3 py-2 border rounded-md"
                     value={form.reDoseStr}
                     onChange={(e) => setForm({ ...form, reDoseStr: e.target.value })}
                   />
                   <select
-                    className="px-2 py-2 border rounded-md bg-white"
+                    className="w-full sm:w-auto px-2 py-2 border rounded-md bg-white shrink-0"
                     value={form.reDoseIntervalUnit}
                     onChange={(e) => setForm({ ...form, reDoseIntervalUnit: e.target.value as "days" | "months" })}
                   >
@@ -265,11 +265,19 @@ export default function VaccinesPage() {
                   </select>
                 </div>
               </div>
-              <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-md border border-slate-200">
+              <div className="sm:col-span-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdd(false)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-md border border-slate-200"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={saving} className="px-4 py-2 rounded-md bg-primary text-white disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-md bg-primary text-white disabled:opacity-50"
+                >
                   Save
                 </button>
               </div>
@@ -313,17 +321,17 @@ export default function VaccinesPage() {
               </div>
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Next dose after (optional)</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="number"
                     min={0}
-                    className="w-full px-3 py-2 border rounded-md"
+                    className="w-full min-w-0 px-3 py-2 border rounded-md"
                     placeholder="Leave 0 for no reminder"
                     value={usageNextVal}
                     onChange={(e) => setUsageNextVal(e.target.value)}
                   />
                   <select
-                    className="px-2 py-2 border rounded-md bg-white"
+                    className="w-full sm:w-auto px-2 py-2 border rounded-md bg-white shrink-0"
                     value={usageNextUnit}
                     onChange={(e) => setUsageNextUnit(e.target.value as "days" | "months")}
                   >
@@ -350,11 +358,19 @@ export default function VaccinesPage() {
                 <label className="block font-medium text-slate-700 mb-1">Notes</label>
                 <textarea className="w-full px-3 py-2 border rounded-md" rows={2} value={usageNotes} onChange={(e) => setUsageNotes(e.target.value)} />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setUsageOpen(false)} className="px-4 py-2 rounded-md border border-slate-200">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUsageOpen(false)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-md border border-slate-200"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={saving} className="px-4 py-2 rounded-md bg-primary text-white disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-md bg-primary text-white disabled:opacity-50"
+                >
                   Save usage
                 </button>
               </div>
