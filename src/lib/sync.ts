@@ -508,9 +508,25 @@ export async function applyEvents(events: SyncEvent[]) {
         const invDelta = asRecord(payload?.inventoryDelta);
         const itemUid = invDelta ? asString(invDelta.itemUid) : undefined;
         const delta = invDelta ? asNumber(invDelta.delta) : undefined;
+        const unitCost = asNumber(payload?.unitCost);
         if (itemUid && typeof delta === "number") {
           const inv = await db.inventory.where("uid").equals(itemUid).first();
-          if (inv?.id) await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
+          if (inv?.id) {
+            const prevQty = inv.quantity ?? 0;
+            const nextQty = prevQty + delta;
+            if (delta > 0 && typeof unitCost === "number" && unitCost > 0) {
+              const prevAvg = Number(inv.avgCost ?? inv.costPrice ?? 0);
+              const addQty = delta;
+              const newAvg = nextQty > 0 ? (prevAvg * prevQty + unitCost * addQty) / nextQty : unitCost;
+              await db.inventory.update(inv.id, {
+                quantity: nextQty,
+                avgCost: newAvg,
+                costPrice: unitCost,
+              });
+            } else {
+              await db.inventory.update(inv.id, { quantity: nextQty });
+            }
+          }
         }
       }
       if (e.entityType === "order.sale" && e.op === "create") {

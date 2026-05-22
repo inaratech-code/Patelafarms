@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type StockMovement } from "@/lib/db";
+import { normalizeDecimalInput, parseDecimalInput } from "@/lib/decimalInput";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 
@@ -26,6 +27,7 @@ export default function StockMovementPage() {
     quantity: 1,
     reason: "Harvest" as StockMovement["reason"],
   });
+  const [unitCostStr, setUnitCostStr] = useState("");
 
   const selectedItem = useMemo(() => inventory.find((i) => i.id === Number(form.itemId)), [inventory, form.itemId]);
   const movementType: StockMovement["type"] = mode === "Add" ? "IN" : "OUT";
@@ -34,6 +36,12 @@ export default function StockMovementPage() {
     if (!qpItemId) return;
     queueMicrotask(() => setForm((f) => ({ ...f, itemId: qpItemId })));
   }, [qpItemId]);
+
+  useEffect(() => {
+    if (!selectedItem || mode !== "Add") return;
+    const c = Number(selectedItem.avgCost ?? selectedItem.costPrice ?? 0);
+    setUnitCostStr(c > 0 ? String(c) : "");
+  }, [selectedItem, mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,13 +52,46 @@ export default function StockMovementPage() {
     if (!Number.isFinite(qty) || qty <= 0) return alert("Quantity must be greater than 0.");
     if (movementType === "OUT" && item.quantity < qty) return alert("Not enough stock to remove.");
 
+    let unitCost: number | undefined;
+    if (movementType === "IN") {
+      unitCost = parseDecimalInput(unitCostStr.trim()) ?? undefined;
+      if (unitCost == null || unitCost < 0 || !Number.isFinite(unitCost)) {
+        return alert("Enter a valid cost price per unit for the stock you are adding.");
+      }
+      if (unitCost === 0) return alert("Cost price per unit must be greater than 0.");
+    }
+
     const date = new Date().toISOString();
-    const nextQty = movementType === "IN" ? item.quantity + qty : item.quantity - qty;
+    const prevQty = item.quantity;
+    const nextQty = movementType === "IN" ? prevQty + qty : prevQty - qty;
 
     try {
       setIsSaving(true);
       await db.transaction("rw", db.tables, async () => {
-        await db.inventory.update(item.id!, { quantity: nextQty });
+        if (movementType === "IN" && unitCost != null) {
+          const prevAvg = Number(item.avgCost ?? item.costPrice ?? 0);
+          const newAvg = nextQty > 0 ? (prevAvg * prevQty + unitCost * qty) / nextQty : unitCost;
+          await db.inventory.update(item.id!, {
+            quantity: nextQty,
+            avgCost: newAvg,
+            costPrice: unitCost,
+          });
+          const uid = item.uid ?? newUid();
+          if (!item.uid) await db.inventory.update(item.id!, { uid });
+          await db.outbox.add(
+            makeSyncEvent({
+              entityType: "inventory.item",
+              entityId: uid,
+              op: "update",
+              payload: {
+                id: item.id,
+                item: { ...item, uid, quantity: nextQty, avgCost: newAvg, costPrice: unitCost },
+              },
+            })
+          );
+        } else {
+          await db.inventory.update(item.id!, { quantity: nextQty });
+        }
         const movement = {
           uid: newUid(),
           itemId: item.id!,
@@ -72,12 +113,14 @@ export default function StockMovementPage() {
                 itemUid: item.uid,
                 delta: movementType === "IN" ? qty : -qty,
               },
+              ...(movementType === "IN" && unitCost != null ? { unitCost } : {}),
             },
           })
         );
       });
 
       setForm((prev) => ({ ...prev, quantity: 1 }));
+      if (movementType === "IN") setUnitCostStr("");
     } catch (err) {
       console.error(err);
       alert("Failed to save stock movement. Please try again.");
@@ -182,6 +225,33 @@ export default function StockMovementPage() {
               ))}
             </select>
           </div>
+
+          {mode === "Add" ? (
+            <div>
+              <label htmlFor="stock-movement-unit-cost" className="block text-sm font-medium mb-1">
+                Cost price (per unit)
+              </label>
+              <input
+                id="stock-movement-unit-cost"
+                name="unitCost"
+                required
+                inputMode="decimal"
+                type="text"
+                value={unitCostStr}
+                onChange={(e) => setUnitCostStr(normalizeDecimalInput(e.target.value, 2))}
+                className="w-full px-3 py-2 border rounded-md"
+                placeholder="e.g. 800.50"
+              />
+              {selectedItem ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Updates average cost for {selectedItem.name}
+                  {Number(selectedItem.avgCost ?? selectedItem.costPrice ?? 0) > 0
+                    ? ` (current avg Rs. ${Number(selectedItem.avgCost ?? selectedItem.costPrice ?? 0).toLocaleString()})`
+                    : ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex justify-end border-t pt-4">

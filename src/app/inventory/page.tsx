@@ -9,6 +9,7 @@ import { commonUnits } from "@/lib/units";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { isConsumable, isSellable, resolveItemType } from "@/lib/erp/items";
+import { normalizeDecimalInput, parseDecimalInput } from "@/lib/decimalInput";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 
 export default function InventoryPage() {
@@ -28,12 +29,6 @@ export default function InventoryPage() {
   const [unitMode, setUnitMode] = useState<"preset" | "custom">("preset");
   const [customUnit, setCustomUnit] = useState("");
 
-  const normalizeMoney = (raw: string) => {
-    // digits only, remove leading zeros (keep single zero)
-    const digits = raw.replace(/[^\d]/g, "");
-    return digits.replace(/^0+(?=\d)/, "");
-  };
-
   const normalizeInt = (raw: string) => {
     const digits = raw.replace(/[^\d]/g, "");
     return digits.replace(/^0+(?=\d)/, "");
@@ -42,7 +37,7 @@ export default function InventoryPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const reorder = Number(formData.minStockThreshold || 0);
-    const cost = Number(formData.costPrice || 0);
+    const cost = parseDecimalInput(formData.costPrice) ?? 0;
     const item = {
       uid: newUid(),
       name: formData.name,
@@ -51,7 +46,7 @@ export default function InventoryPage() {
       unit: unitMode === "custom" ? (customUnit.trim() || formData.unit) : formData.unit,
       quantity: Number(formData.quantity || 0),
       costPrice: cost,
-      sellingPrice: Number(formData.sellingPrice || 0),
+      sellingPrice: parseDecimalInput(formData.sellingPrice) ?? 0,
       minStockThreshold: reorder,
       reorderLevel: reorder,
       avgCost: cost,
@@ -140,12 +135,26 @@ export default function InventoryPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Item Name</label>
-            <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+            <label htmlFor="inventory-item-name" className="block text-sm font-medium mb-1">
+              Item Name
+            </label>
+            <input
+              id="inventory-item-name"
+              name="itemName"
+              required
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 border rounded-md"
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Item type</label>
+            <label htmlFor="inventory-item-type" className="block text-sm font-medium mb-1">
+              Item type
+            </label>
             <select
+              id="inventory-item-type"
+              name="itemType"
               value={formData.itemType}
               onChange={(e) => setFormData({ ...formData, itemType: e.target.value as ItemTypeErp })}
               className="w-full px-3 py-2 border rounded-md bg-white"
@@ -156,8 +165,12 @@ export default function InventoryPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Opening Quantity</label>
+            <label htmlFor="inventory-opening-qty" className="block text-sm font-medium mb-1">
+              Opening Quantity
+            </label>
             <input
+              id="inventory-opening-qty"
+              name="openingQuantity"
               required
               inputMode="numeric"
               type="text"
@@ -168,9 +181,13 @@ export default function InventoryPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Unit</label>
+            <label htmlFor="inventory-unit" className="block text-sm font-medium mb-1">
+              Unit
+            </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <select
+                id="inventory-unit"
+                name="unit"
                 value={unitMode === "custom" ? "__custom__" : formData.unit}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -193,43 +210,66 @@ export default function InventoryPage() {
               </select>
 
               {unitMode === "custom" ? (
-                <input
-                  required
-                  type="text"
-                  value={customUnit}
-                  onChange={(e) => setCustomUnit(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md"
-                  placeholder="Type unit (e.g. ton, meter)"
-                />
+                <>
+                  <label htmlFor="inventory-custom-unit" className="sr-only">
+                    Custom unit
+                  </label>
+                  <input
+                    id="inventory-custom-unit"
+                    name="customUnit"
+                    required
+                    type="text"
+                    value={customUnit}
+                    onChange={(e) => setCustomUnit(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-md"
+                    placeholder="Type unit (e.g. ton, meter)"
+                  />
+                </>
               ) : null}
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Cost Price (per unit)</label>
+            <label htmlFor="inventory-cost-price" className="block text-sm font-medium mb-1">
+              Cost Price (per unit)
+            </label>
             <input
+              id="inventory-cost-price"
+              name="costPrice"
               required
-              inputMode="numeric"
+              inputMode="decimal"
               type="text"
               value={formData.costPrice}
-              onChange={(e) => setFormData({ ...formData, costPrice: normalizeMoney(e.target.value) })}
+              onChange={(e) =>
+                setFormData({ ...formData, costPrice: normalizeDecimalInput(e.target.value, 2) })
+              }
               className="w-full px-3 py-2 border rounded-md"
-              placeholder="e.g. 800"
+              placeholder="e.g. 800.50"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Selling price (optional)</label>
+            <label htmlFor="inventory-selling-price" className="block text-sm font-medium mb-1">
+              Selling price (optional)
+            </label>
             <input
-              inputMode="numeric"
+              id="inventory-selling-price"
+              name="sellingPrice"
+              inputMode="decimal"
               type="text"
               value={formData.sellingPrice}
-              onChange={(e) => setFormData({ ...formData, sellingPrice: normalizeMoney(e.target.value) })}
+              onChange={(e) =>
+                setFormData({ ...formData, sellingPrice: normalizeDecimalInput(e.target.value, 2) })
+              }
               className="w-full px-3 py-2 border rounded-md"
               placeholder="POS can override"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Reorder / low stock at</label>
+            <label htmlFor="inventory-reorder-level" className="block text-sm font-medium mb-1">
+              Reorder / low stock at
+            </label>
             <input
+              id="inventory-reorder-level"
+              name="reorderLevel"
               required
               inputMode="numeric"
               type="text"
