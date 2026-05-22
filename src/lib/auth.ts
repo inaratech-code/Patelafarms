@@ -5,6 +5,7 @@ import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { isPasswordPwned } from "@/lib/pwnedPasswords";
 
 export const SESSION_KEY = "pf.session.v1";
+export const LAST_ACTIVE_KEY = "pf.lastActiveAt.v1";
 
 export type Session = {
   userId: number;
@@ -35,8 +36,11 @@ export function notifySessionChanged() {
 
 export function setSession(session: Omit<Session, "createdAt">) {
   if (typeof window === "undefined") return;
-  const full: Session = { ...session, createdAt: Date.now() };
+  const now = Date.now();
+  const full: Session = { ...session, createdAt: now };
   localStorage.setItem(SESSION_KEY, JSON.stringify(full));
+  // Fresh sign-in must not inherit a stale idle timestamp (would instant-logout).
+  localStorage.setItem(LAST_ACTIVE_KEY, String(now));
   notifySessionChanged();
 }
 

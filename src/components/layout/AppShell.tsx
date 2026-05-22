@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { clearSession, getSession, type Session } from "@/lib/auth";
+import { clearSession, getSession, LAST_ACTIVE_KEY, type Session } from "@/lib/auth";
 import { PushAlertsWatcher } from "@/components/notifications/PushAlertsWatcher";
 import { startAutoSync } from "@/lib/autoSync";
 import { canAccessPath, normalizePermissions, pickDefaultRoute } from "@/lib/rbac";
@@ -25,7 +25,7 @@ export function AppShell(props: { children: React.ReactNode }) {
   // Read session only on the client (avoids SSR/hydration treating everyone as logged out).
   useEffect(() => {
     refreshSession();
-    queueMicrotask(() => setAuthReady(true));
+    setAuthReady(true);
   }, [pathname, refreshSession]);
 
   useEffect(() => {
@@ -55,7 +55,6 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (isLoginRoute) return;
     if (!session?.userId) return;
 
-    const IDLE_KEY = "pf.lastActiveAt.v1";
     const IDLE_MS = 60 * 60 * 1000; // 1 hour
 
     const now = () => Date.now();
@@ -66,22 +65,25 @@ export function AppShell(props: { children: React.ReactNode }) {
       // Throttle localStorage writes (high-frequency events like mousemove).
       if (t - lastWrite < 15_000) return;
       lastWrite = t;
-      localStorage.setItem(IDLE_KEY, String(t));
+      localStorage.setItem(LAST_ACTIVE_KEY, String(t));
     };
 
-    // Initialize if missing.
-    if (!localStorage.getItem(IDLE_KEY)) {
-      localStorage.setItem(IDLE_KEY, String(now()));
+    // Align idle clock with this session (handles logins before setSession wrote the key).
+    const sessionStartedAt = session?.createdAt ?? now();
+    const lastActiveRaw = localStorage.getItem(LAST_ACTIVE_KEY);
+    const lastActive = lastActiveRaw ? Number(lastActiveRaw) : 0;
+    if (!lastActive || lastActive < sessionStartedAt) {
+      localStorage.setItem(LAST_ACTIVE_KEY, String(now()));
     }
 
     const logout = () => {
       clearSession();
-      localStorage.removeItem(IDLE_KEY);
+      localStorage.removeItem(LAST_ACTIVE_KEY);
       window.location.replace("/login");
     };
 
     const check = () => {
-      const raw = localStorage.getItem(IDLE_KEY);
+      const raw = localStorage.getItem(LAST_ACTIVE_KEY);
       const last = raw ? Number(raw) : 0;
       if (!last) return;
       if (now() - last > IDLE_MS) logout();
@@ -107,7 +109,7 @@ export function AppShell(props: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(interval);
     };
-  }, [isLoginRoute, session?.userId]);
+  }, [isLoginRoute, session?.createdAt, session?.userId]);
 
   useEffect(() => {
     if (!authReady) return;

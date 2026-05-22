@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
 import { formatLoginError } from "@/lib/loginErrors";
 import { getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
-import { pullEvents, syncNow } from "@/lib/sync";
+import { syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 
