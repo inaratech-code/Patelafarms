@@ -733,13 +733,22 @@ export async function applyEvents(events: SyncEvent[]) {
           const row = { ...(vaccine as AnyRecord) };
           delete row.id;
           if (!found) await db.vaccines.add(row as unknown as Omit<Vaccine, "id">);
-          else if (typeof found.id === "number") await db.vaccines.update(found.id, row as unknown as Partial<Vaccine>);
+          else if (typeof found.id === "number" && e.op === "update") {
+            await db.vaccines.update(found.id, row as unknown as Partial<Vaccine>);
+          }
         }
       }
 
       if (e.entityType === "farmHealth.usageBundle" && e.op === "create") {
         const vaccine = asRecord(payload?.vaccine);
         const vUid = vaccine ? asString(vaccine.uid) : undefined;
+        const usage = asRecord(payload?.usage);
+        const uUid = usage ? asString(usage.uid) : undefined;
+        const existingUsage = uUid ? await db.vaccineUsages.where("uid").equals(uUid).first() : undefined;
+        const vaccineDelta = asRecord(payload?.vaccineDelta);
+        const deltaVaccineUid = vaccineDelta ? asString(vaccineDelta.vaccineUid) : undefined;
+        const delta = vaccineDelta ? asNumber(vaccineDelta.delta) : undefined;
+        const hasVaccineDelta = Boolean(vaccineDelta);
         let vaccineId: number | undefined;
         if (vUid && vaccine) {
           const found = await db.vaccines.where("uid").equals(vUid).first();
@@ -748,21 +757,25 @@ export async function applyEvents(events: SyncEvent[]) {
           if (!found) vaccineId = (await db.vaccines.add(row as unknown as Omit<Vaccine, "id">)) as number;
           else {
             vaccineId = found.id;
+            if (hasVaccineDelta) {
+              if (!existingUsage && deltaVaccineUid === vUid && typeof delta === "number") {
+                row.qtyAvailable = Number(found.qtyAvailable ?? 0) + delta;
+              } else {
+                delete row.qtyAvailable;
+              }
+            }
             await db.vaccines.update(found.id, row as unknown as Partial<Vaccine>);
           }
         }
-        const usage = asRecord(payload?.usage);
-        const uUid = usage ? asString(usage.uid) : undefined;
         let usageId: number | undefined;
         if (uUid && usage && typeof vaccineId === "number") {
-          const found = await db.vaccineUsages.where("uid").equals(uUid).first();
-          if (!found) {
+          if (!existingUsage) {
             const uRow: AnyRecord = { ...usage };
             delete uRow.id;
             delete uRow.vaccineUid;
             uRow.vaccineId = vaccineId;
             usageId = (await db.vaccineUsages.add(uRow as unknown as Omit<VaccineUsage, "id">)) as number;
-          } else usageId = found.id;
+          } else usageId = existingUsage.id;
         }
         const reminder = asRecord(payload?.reminder);
         const rUid = reminder ? asString(reminder.uid) : undefined;
