@@ -486,7 +486,7 @@ export async function applyEvents(events: SyncEvent[]) {
 
         let linkedLedgerEntryId: number | undefined;
         const ledgerEntryUid = ledgerEntry ? asString(ledgerEntry.uid) : undefined;
-        if (ledgerEntryUid && typeof partyAccountId === "number") {
+        if (ledgerEntry && ledgerEntryUid && typeof partyAccountId === "number") {
           linkedLedgerEntryId = await addLedgerEntryWithBalance({
             uid: ledgerEntryUid,
             accountId: partyAccountId,
