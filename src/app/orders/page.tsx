@@ -110,6 +110,7 @@ export default function OrdersPage() {
     method: "Cash",
     financialAccountId: 0,
   });
+  const [purchaseUnitCostStr, setPurchaseUnitCostStr] = useState("");
   const [purchaseForm, setPurchaseForm] = useState({
     supplierName: "",
     date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
@@ -117,7 +118,7 @@ export default function OrdersPage() {
     method: "Cash" as PaymentMethod,
     financialAccountId: 0,
     lineItemDraft: { itemId: 0, quantity: 1 },
-    lineItems: [] as Array<{ itemId: number; quantity: number }>,
+    lineItems: [] as Array<{ itemId: number; quantity: number; unitCost: number }>,
   });
 
   useEffect(() => {
@@ -144,31 +145,40 @@ export default function OrdersPage() {
   }, [inventory, saleForm.itemId, saleQuantityStr, saleUnitPriceStr]);
 
   const purchaseTotal = useMemo(() => {
-    return purchaseForm.lineItems.reduce((acc, li) => {
-      const item = inventory.find((i) => i.id === li.itemId);
-      const unitCost = item?.costPrice ?? 0;
-      return acc + unitCost * li.quantity;
-    }, 0);
-  }, [inventory, purchaseForm.lineItems]);
+    return purchaseForm.lineItems.reduce((acc, li) => acc + li.unitCost * li.quantity, 0);
+  }, [purchaseForm.lineItems]);
 
   const addPurchaseLineItem = () => {
     const itemId = Number(purchaseForm.lineItemDraft.itemId);
+    const item = inventory.find((i) => i.id === itemId);
     const quantity = Number(purchaseForm.lineItemDraft.quantity);
-    if (!itemId || quantity <= 0) return;
+    if (!itemId || !item) return;
+    if (!quantity || quantity <= 0) {
+      return alert("Enter a quantity greater than 0.");
+    }
+
+    let unitCost = parseSaleQuantityInput(purchaseUnitCostStr.trim());
+    if (unitCost == null || unitCost <= 0) {
+      unitCost = Number(item.costPrice ?? 0);
+    }
+    if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      return alert("Enter a valid cost per unit (greater than 0), or set a list cost on the item.");
+    }
 
     setPurchaseForm((prev) => {
       const existingIdx = prev.lineItems.findIndex((li) => li.itemId === itemId);
       const nextLineItems = [...prev.lineItems];
       if (existingIdx >= 0) {
-        nextLineItems[existingIdx] = {
-          itemId,
-          quantity: nextLineItems[existingIdx].quantity + quantity,
-        };
+        const ex = nextLineItems[existingIdx];
+        const newQty = ex.quantity + quantity;
+        const blendedUnit = newQty > 0 ? (ex.unitCost * ex.quantity + unitCost * quantity) / newQty : unitCost;
+        nextLineItems[existingIdx] = { itemId, quantity: newQty, unitCost: blendedUnit };
       } else {
-        nextLineItems.push({ itemId, quantity });
+        nextLineItems.push({ itemId, quantity, unitCost });
       }
       return { ...prev, lineItems: nextLineItems, lineItemDraft: { itemId: 0, quantity: 1 } };
     });
+    setPurchaseUnitCostStr("");
   };
 
   const removePurchaseLineItem = (itemId: number) => {
@@ -393,7 +403,7 @@ export default function OrdersPage() {
 
     if (lineItemsResolved.some((li) => !li.item)) return alert("One or more selected items were not found.");
 
-    const totalCost = lineItemsResolved.reduce((acc, li) => acc + (li.item!.costPrice * li.quantity), 0);
+    const totalCost = lineItemsResolved.reduce((acc, li) => acc + li.unitCost * li.quantity, 0);
     const description = `Purchase from ${supplierName} (${purchaseForm.lineItems.length} item(s))`;
     const supplierLedgerId = await ensureSupplierLedgerAccount(supplierName);
 
@@ -406,7 +416,11 @@ export default function OrdersPage() {
       for (const li of lineItemsResolved) {
         const item = li.item!;
         if (!item.uid) throw new Error("Inventory item missing uid (sync requires uid)");
-        const lineCost = item.costPrice * li.quantity;
+        const lineCost = li.unitCost * li.quantity;
+        const prevQty = item.quantity;
+        const prevAvg = Number(item.avgCost ?? item.costPrice ?? 0);
+        const newQty = prevQty + li.quantity;
+        const newAvg = newQty > 0 ? (prevQty * prevAvg + lineCost) / newQty : prevAvg;
 
         const purchase = {
           uid: newUid(),
@@ -419,7 +433,7 @@ export default function OrdersPage() {
         };
         const pid = await db.purchases.add(purchase);
 
-        await db.inventory.update(item.id!, { quantity: item.quantity + li.quantity });
+        await db.inventory.update(item.id!, { quantity: newQty, avgCost: newAvg });
         const movement = { uid: newUid(), itemId: item.id!, quantity: li.quantity, type: 'IN' as const, reason: 'Purchase' as const, date };
         const mid = await db.stockMovement.add(movement);
 
@@ -559,6 +573,7 @@ export default function OrdersPage() {
     });
 
     setShowForm(false);
+    setPurchaseUnitCostStr("");
     setPurchaseForm({
       supplierName: "",
       date: new Date().toISOString().slice(0, 10),
@@ -796,17 +811,20 @@ export default function OrdersPage() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
             <div>
               <label className="block text-sm font-medium mb-1">Select Item</label>
               <select
                 value={purchaseForm.lineItemDraft.itemId}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  const row = inventory.find((i) => i.id === id);
                   setPurchaseForm({
                     ...purchaseForm,
-                    lineItemDraft: { ...purchaseForm.lineItemDraft, itemId: Number(e.target.value) },
-                  })
-                }
+                    lineItemDraft: { ...purchaseForm.lineItemDraft, itemId: id },
+                  });
+                  setPurchaseUnitCostStr(row ? String(row.costPrice ?? "") : "");
+                }}
                 className="w-full px-3 py-2 border rounded-md bg-white"
               >
                 <option value={0}>Select...</option>
@@ -833,7 +851,20 @@ export default function OrdersPage() {
                 className="w-full px-3 py-2 border rounded-md"
               />
             </div>
-            <div className="flex gap-2">
+            <div>
+              <label className="block text-sm font-medium mb-1">Cost (per unit)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={purchaseUnitCostStr}
+                onChange={(e) => setPurchaseUnitCostStr(normalizeSaleQtyInput(e.target.value))}
+                className="w-full px-3 py-2 border rounded-md"
+                placeholder="Buy rate per unit"
+                title="Leave blank to use the item list cost"
+              />
+            </div>
+            <div>
               <button
                 type="button"
                 onClick={addPurchaseLineItem}
@@ -855,19 +886,21 @@ export default function OrdersPage() {
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Qty</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Line Cost</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Unit cost</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Line total</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Remove</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200">
                   {purchaseForm.lineItems.map((li) => {
                     const item = inventory.find((i) => i.id === li.itemId);
-                    const lineCost = (item?.costPrice ?? 0) * li.quantity;
+                    const lineCost = li.unitCost * li.quantity;
                     return (
                       <tr key={li.itemId}>
                         <td className="px-4 py-2 text-sm text-slate-900">{item?.name ?? "Unknown"}</td>
                         <td className="px-4 py-2 text-sm text-slate-900">{li.quantity}</td>
-                        <td className="px-4 py-2 text-sm text-slate-900">Rs. {lineCost}</td>
+                        <td className="px-4 py-2 text-sm text-slate-900">Rs. {li.unitCost.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-sm text-slate-900">Rs. {lineCost.toLocaleString()}</td>
                         <td className="px-4 py-2 text-right">
                           <button
                             type="button"
@@ -887,7 +920,7 @@ export default function OrdersPage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center border-t pt-4">
-            <div className="text-lg font-semibold text-slate-900">Total Cost: Rs. {purchaseTotal}</div>
+            <div className="text-lg font-semibold text-slate-900">Total Cost: Rs. {purchaseTotal.toLocaleString()}</div>
             <button type="submit" className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90">
               Complete Purchase
             </button>
