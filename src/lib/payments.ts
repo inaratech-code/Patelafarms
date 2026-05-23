@@ -55,6 +55,23 @@ export async function postPayment(params: {
   };
 
   return await db.transaction("rw", db.tables, async () => {
+    let partyUid = party.uid;
+    if (!partyUid) {
+      partyUid = newUid();
+      await db.ledgerAccounts.update(party.id, { uid: partyUid });
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "ledger.account",
+          entityId: partyUid,
+          op: "update",
+          payload: {
+            id: party.id,
+            account: { uid: partyUid, name: party.name, type: party.type },
+          },
+        })
+      );
+    }
+
     const ledgerEntryId = await addLedgerEntry({
       accountId: params.partyAccountId,
       date,
@@ -65,6 +82,13 @@ export async function postPayment(params: {
 
     const dayBookUid = newUid();
     const dayBookEntryId = await db.dayBook.add({ ...dayBook, uid: dayBookUid });
+    const ledgerEntry = await db.ledgerEntries.get(ledgerEntryId);
+    const financialAccount = await db.financialAccounts.get(accountId);
+    let financialAccountUid = financialAccount?.uid;
+    if (financialAccount?.id && !financialAccountUid) {
+      financialAccountUid = newUid();
+      await db.financialAccounts.update(financialAccount.id, { uid: financialAccountUid });
+    }
 
     const payment: Omit<Payment, "id"> = {
       uid: paymentUid,
@@ -88,7 +112,32 @@ export async function postPayment(params: {
         entityType: "payment.posted",
         entityId: paymentUid,
         op: "create",
-        payload: { paymentId, ledgerEntryId, dayBookEntryId, payment, dayBookUid },
+        payload: {
+          paymentId,
+          ledgerEntryId,
+          dayBookEntryId,
+          payment,
+          partyAccount: { uid: partyUid, name: party.name, type: party.type },
+          financialAccount: financialAccount && financialAccountUid
+            ? { uid: financialAccountUid, name: financialAccount.name, type: financialAccount.type }
+            : null,
+          ledgerEntry: ledgerEntry?.uid
+            ? {
+                uid: ledgerEntry.uid,
+                date: ledgerEntry.date,
+                description: ledgerEntry.description,
+                debit: ledgerEntry.debit,
+                credit: ledgerEntry.credit,
+              }
+            : null,
+          dayBook: {
+            ...dayBook,
+            uid: dayBookUid,
+            account: financialAccount && financialAccountUid
+              ? { uid: financialAccountUid, name: financialAccount.name, type: financialAccount.type }
+              : null,
+          },
+        },
       })
     );
 

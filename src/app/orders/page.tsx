@@ -401,7 +401,7 @@ export default function OrdersPage() {
       const purchaseBatchUid = newUid();
       const purchaseRows: Array<Record<string, unknown>> = [];
       const movementRows: Array<Record<string, unknown>> = [];
-      const inventoryDeltas: Array<{ itemUid: string; delta: number }> = [];
+      const inventoryDeltas: Array<{ itemUid: string; delta: number; unitCost: number }> = [];
 
       for (const li of lineItemsResolved) {
         const item = li.item!;
@@ -419,13 +419,18 @@ export default function OrdersPage() {
         };
         const pid = await db.purchases.add(purchase);
 
-        await db.inventory.update(item.id!, { quantity: item.quantity + li.quantity });
+        const prevQty = item.quantity;
+        const unitCost = item.costPrice;
+        const newQty = prevQty + li.quantity;
+        const prevAvg = Number(item.avgCost ?? item.costPrice ?? 0);
+        const newAvg = newQty > 0 ? (prevQty * prevAvg + unitCost * li.quantity) / newQty : prevAvg;
+        await db.inventory.update(item.id!, { quantity: newQty, avgCost: newAvg });
         const movement = { uid: newUid(), itemId: item.id!, quantity: li.quantity, type: 'IN' as const, reason: 'Purchase' as const, date };
         const mid = await db.stockMovement.add(movement);
 
         purchaseRows.push({ ...purchase, itemUid: item.uid, localId: pid });
         movementRows.push({ ...movement, itemUid: item.uid, localId: mid });
-        inventoryDeltas.push({ itemUid: item.uid, delta: li.quantity });
+        inventoryDeltas.push({ itemUid: item.uid, delta: li.quantity, unitCost });
       }
 
       // Purchase accounting:
