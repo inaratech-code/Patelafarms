@@ -17,7 +17,18 @@ export async function getOrCreateCashLedgerAccountId() {
     .first();
 
   if (typeof existing?.id === "number") {
-    if (!existing.uid) await db.ledgerAccounts.update(existing.id, { uid: newUid() });
+    if (!existing.uid) {
+      const uid = newUid();
+      await db.ledgerAccounts.update(existing.id, { uid });
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "ledger.account",
+          entityId: uid,
+          op: "update",
+          payload: { id: existing.id, account: { uid, name: CASH_LEDGER_NAME, type: "Customer" as const } },
+        })
+      );
+    }
     return existing.id;
   }
 

@@ -356,13 +356,13 @@ export async function applyEvents(events: SyncEvent[]) {
         credit: number;
       }) => {
         const existingEntry = await db.ledgerEntries.where("uid").equals(params.uid).first();
-        if (existingEntry) return;
+        if (existingEntry) return existingEntry.id;
 
         const last = await db.ledgerEntries.where("accountId").equals(params.accountId).sortBy("date");
         const prevBalance = last.length ? last[last.length - 1].balance : 0;
         const balance = prevBalance + (Number(params.debit) - Number(params.credit));
 
-        await db.ledgerEntries.add({
+        return await db.ledgerEntries.add({
           uid: params.uid,
           accountId: params.accountId,
           date: params.date,
@@ -371,6 +371,31 @@ export async function applyEvents(events: SyncEvent[]) {
           credit: Number(params.credit) || 0,
           balance,
         });
+      };
+
+      const applyInventoryDelta = async (params: {
+        itemUid?: string;
+        delta?: number;
+        unitCost?: number;
+        updateCostPrice?: boolean;
+      }) => {
+        if (!params.itemUid || typeof params.delta !== "number") return;
+        const inv = await db.inventory.where("uid").equals(params.itemUid).first();
+        if (!inv?.id) return;
+
+        const prevQty = inv.quantity ?? 0;
+        const nextQty = prevQty + params.delta;
+        if (params.delta > 0 && typeof params.unitCost === "number" && params.unitCost >= 0) {
+          const prevAvg = Number(inv.avgCost ?? inv.costPrice ?? 0);
+          const newAvg = nextQty > 0 ? (prevAvg * prevQty + params.unitCost * params.delta) / nextQty : prevAvg;
+          await db.inventory.update(inv.id, {
+            quantity: nextQty,
+            avgCost: newAvg,
+            ...(params.updateCostPrice ? { costPrice: params.unitCost } : {}),
+          });
+        } else {
+          await db.inventory.update(inv.id, { quantity: nextQty });
+        }
       };
 
       // Apply minimal event types we currently emit.
@@ -451,18 +476,64 @@ export async function applyEvents(events: SyncEvent[]) {
       if (e.entityType === "payment.posted" && e.op === "create") {
         const payment = asRecord(payload?.payment);
         const pUid = payment ? asString(payment.uid) : undefined;
-        if (pUid) {
-          const found = await db.payments.where("uid").equals(pUid).first();
-          if (!found) await db.payments.add(payment as unknown as Omit<Payment, "id">);
+        const partyAccount = asRecord(payload?.partyAccount) ?? (payment ? asRecord(payment.partyAccount) : undefined);
+        const financialAccount = asRecord(payload?.financialAccount) ?? (payment ? asRecord(payment.financialAccount) : undefined);
+        const ledgerEntry = asRecord(payload?.ledgerEntry) ?? (payment ? asRecord(payment.ledgerEntry) : undefined);
+        const dayBook = asRecord(payload?.dayBook) ?? (payment ? asRecord(payment.dayBook) : undefined);
+
+        let partyAccountId: number | undefined;
+        if (partyAccount) partyAccountId = await ensureLedgerAccountIdByUid(partyAccount);
+
+        let linkedLedgerEntryId: number | undefined;
+        const ledgerEntryUid = ledgerEntry ? asString(ledgerEntry.uid) : undefined;
+        if (ledgerEntry && ledgerEntryUid && typeof partyAccountId === "number") {
+          linkedLedgerEntryId = await addLedgerEntryWithBalance({
+            uid: ledgerEntryUid,
+            accountId: partyAccountId,
+            date: String(ledgerEntry.date ?? ""),
+            description: String(ledgerEntry.description ?? ""),
+            debit: Number(ledgerEntry.debit ?? 0) || 0,
+            credit: Number(ledgerEntry.credit ?? 0) || 0,
+          });
         }
-        // DayBook row is included in payload for payments.
-        const dayBookUid = asString(payload?.dayBookUid);
-        const dayBookObj = payment ? asRecord(payment.dayBook) : undefined;
-        const dayBookRow = dayBookUid && dayBookObj ? ({ uid: dayBookUid, ...dayBookObj } as AnyRecord) : undefined;
-        const dbUid = dayBookRow ? asString(dayBookRow.uid) : undefined;
-        if (dbUid) {
-          const found = await db.dayBook.where("uid").equals(dbUid).first();
-          if (!found) await db.dayBook.add(dayBookRow as unknown as Omit<DayBookEntry, "id">);
+
+        let financialAccountId: number | undefined;
+        if (financialAccount) financialAccountId = await ensureFinancialAccountIdByUid(financialAccount);
+
+        let linkedDayBookEntryId: number | undefined;
+        const dayBookUid = dayBook ? asString(dayBook.uid) : undefined;
+        if (dayBookUid && dayBook) {
+          const found = await db.dayBook.where("uid").equals(dayBookUid).first();
+          if (found?.id) linkedDayBookEntryId = found.id;
+          else {
+            const row: AnyRecord = { ...dayBook };
+            delete row.id;
+            delete row.accountId;
+            if (typeof financialAccountId === "number") row.accountId = financialAccountId;
+            delete row.account;
+            if (row.affectsCash === undefined) row.affectsCash = true;
+            linkedDayBookEntryId = (await db.dayBook.add(row as unknown as Omit<DayBookEntry, "id">)) as number;
+          }
+        }
+
+        if (pUid && payment && typeof partyAccountId === "number") {
+          const found = await db.payments.where("uid").equals(pUid).first();
+          if (!found) {
+            const row: AnyRecord = { ...payment };
+            delete row.id;
+            delete row.partyAccount;
+            delete row.financialAccount;
+            delete row.ledgerEntry;
+            delete row.dayBook;
+            row.partyAccountId = partyAccountId;
+            delete row.accountId;
+            if (typeof financialAccountId === "number") row.accountId = financialAccountId;
+            delete row.linkedLedgerEntryId;
+            if (typeof linkedLedgerEntryId === "number") row.linkedLedgerEntryId = linkedLedgerEntryId;
+            delete row.linkedDayBookEntryId;
+            if (typeof linkedDayBookEntryId === "number") row.linkedDayBookEntryId = linkedDayBookEntryId;
+            await db.payments.add(row as unknown as Omit<Payment, "id">);
+          }
         }
       }
       if (e.entityType === "ledger.account" && e.op === "create") {
@@ -509,25 +580,7 @@ export async function applyEvents(events: SyncEvent[]) {
         const itemUid = invDelta ? asString(invDelta.itemUid) : undefined;
         const delta = invDelta ? asNumber(invDelta.delta) : undefined;
         const unitCost = asNumber(payload?.unitCost);
-        if (itemUid && typeof delta === "number") {
-          const inv = await db.inventory.where("uid").equals(itemUid).first();
-          if (inv?.id) {
-            const prevQty = inv.quantity ?? 0;
-            const nextQty = prevQty + delta;
-            if (delta > 0 && typeof unitCost === "number" && unitCost > 0) {
-              const prevAvg = Number(inv.avgCost ?? inv.costPrice ?? 0);
-              const addQty = delta;
-              const newAvg = nextQty > 0 ? (prevAvg * prevQty + unitCost * addQty) / nextQty : unitCost;
-              await db.inventory.update(inv.id, {
-                quantity: nextQty,
-                avgCost: newAvg,
-                costPrice: unitCost,
-              });
-            } else {
-              await db.inventory.update(inv.id, { quantity: nextQty });
-            }
-          }
-        }
+        await applyInventoryDelta({ itemUid, delta, unitCost, updateCostPrice: true });
       }
       if (e.entityType === "order.sale" && e.op === "create") {
         const sale = asRecord(payload?.sale);
@@ -562,12 +615,7 @@ export async function applyEvents(events: SyncEvent[]) {
         const invDelta = asRecord(payload?.inventoryDelta);
         const itemUid = invDelta ? asString(invDelta.itemUid) : undefined;
         const delta = invDelta ? asNumber(invDelta.delta) : undefined;
-        if (itemUid && typeof delta === "number") {
-          const inv = await db.inventory.where("uid").equals(itemUid).first();
-          if (inv?.id) {
-            await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
-          }
-        }
+        await applyInventoryDelta({ itemUid, delta });
       }
       if (e.entityType === "role.record" && e.op === "create") {
         const role = asRecord(payload?.role);
@@ -628,10 +676,8 @@ export async function applyEvents(events: SyncEvent[]) {
           const itemUid = d ? asString(d.itemUid) : undefined;
           const delta = d ? asNumber(d.delta) : undefined;
           if (!itemUid || typeof delta !== "number") continue;
-          const inv = await db.inventory.where("uid").equals(itemUid).first();
-          if (inv?.id) {
-            await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
-          }
+          const unitCost = d ? asNumber(d.unitCost) : undefined;
+          await applyInventoryDelta({ itemUid, delta, unitCost });
         }
       }
 
