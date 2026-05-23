@@ -10,6 +10,12 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { useSearchParams } from "next/navigation";
 import { buildSupplierNameOptions } from "@/lib/supplierOptions";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 /** Same decimal rules as Sales (orders page). */
 function normalizeQtyInput(raw: string): string {
@@ -291,13 +297,18 @@ export default function PurchasesPage() {
     [ledgerSuppliers, purchaseList]
   );
 
+  const sortedPurchases = useMemo(
+    () => [...purchaseList].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [purchaseList]
+  );
+
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-semibold text-slate-900">Purchase / Supplier Management</h1>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "New Purchase"}</span>
@@ -445,6 +456,7 @@ export default function PurchasesPage() {
             {purchaseForm.lineItems.length === 0 ? (
               <div className="px-4 py-6 text-sm text-slate-500">No items added yet.</div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-white">
                   <tr>
@@ -479,10 +491,11 @@ export default function PurchasesPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
-          <div className="sm:col-span-2 lg:col-span-5 flex justify-between items-center mt-2 border-t border-slate-200 pt-4">
+          <div className="sm:col-span-2 lg:col-span-5 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mt-2 border-t border-slate-200 pt-4">
             <div className="text-lg font-semibold text-slate-900">Total: Rs. {purchaseTotal.toLocaleString()}</div>
             <button type="submit" className="px-6 py-2 bg-alert-green text-white rounded-md hover:bg-alert-green/90">
               Complete Purchase
@@ -492,44 +505,65 @@ export default function PurchasesPage() {
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        {purchaseList.length === 0 ? (
+        {sortedPurchases.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <p className="text-lg font-medium text-slate-900">No purchases recorded</p>
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Supplier</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Qty</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cost</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {purchaseList
-                .slice()
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .map((purchase) => {
+          <ResponsiveTableShell
+            mobile={sortedPurchases.map((purchase) => {
+              const item = inventoryList.find((i) => i.id === purchase.itemId);
+              return (
+                <MobileDataCard key={purchase.id}>
+                  <MobileCardHeader
+                    title={purchase.supplierName}
+                    subtitle={new Date(purchase.date).toLocaleDateString()}
+                    trailing={
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                        Rs. {purchase.totalCost.toLocaleString()}
+                      </span>
+                    }
+                  />
+                  <div className="text-sm text-slate-700 break-words">
+                    {purchase.quantity}x {item?.name || "Unknown"}
+                  </div>
+                </MobileDataCard>
+              );
+            })}
+          >
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Supplier</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Qty</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Cost</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {sortedPurchases.map((purchase) => {
                   const item = inventoryList.find((i) => i.id === purchase.itemId);
                   return (
                     <tr key={purchase.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">
                         {new Date(purchase.date).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{purchase.supplierName}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{item?.name || "Unknown"}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{purchase.quantity}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">Rs. {purchase.totalCost}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{purchase.supplierName}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{item?.name || "Unknown"}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{purchase.quantity}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm font-medium text-right text-slate-900 tabular-nums">
+                        Rs. {purchase.totalCost.toLocaleString()}
+                      </td>
                     </tr>
                   );
                 })}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

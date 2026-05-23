@@ -10,6 +10,12 @@ import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/f
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 import { isPasswordPwned } from "@/lib/pwnedPasswords";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 type PermissionId =
   | "dashboard"
@@ -265,20 +271,20 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-semibold text-slate-900">User Management</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => setShowCreateRole(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
           >
             <ShieldPlus className="w-5 h-5" />
             <span>Create Role</span>
           </button>
           <button
             onClick={() => setShowCreateUser(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+            className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
             disabled={!roles || roles.length === 0}
             title={!roles || roles.length === 0 ? "Create a role first" : undefined}
           >
@@ -605,32 +611,20 @@ export default function UsersPage() {
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Phone</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold">
-                      {user.username.charAt(0).toUpperCase()}
-                    </div>
-                    {user.username}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                    <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
-                      {roleById.get(user.roleId)?.name ?? "role"}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden min-w-0">
+          <ResponsiveTableShell
+            mobile={users.map((user) => (
+              <MobileDataCard key={user.id}>
+                <MobileCardHeader
+                  title={
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold shrink-0">
+                        {user.username.charAt(0).toUpperCase()}
+                      </span>
+                      {user.username}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.phone || "-"}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  }
+                  trailing={
                     <button
                       type="button"
                       onClick={async () => {
@@ -653,17 +647,83 @@ export default function UsersPage() {
                         await deleteFarmCloudLogin(user.username);
                         await db.users.delete(user.id);
                       }}
-                      className="text-alert-red hover:text-alert-red/80"
+                      className="text-alert-red hover:text-alert-red/80 p-1"
+                      aria-label={`Delete ${user.username}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </td>
+                  }
+                />
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                  <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                    {roleById.get(user.roleId)?.name ?? "role"}
+                  </span>
+                  <span>{user.phone || "No phone"}</span>
+                </div>
+              </MobileDataCard>
+            ))}
+          >
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Name</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Phone</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {users.map((user) => (
+                  <tr key={user.id}>
+                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-slate-900">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold shrink-0">
+                          {user.username.charAt(0).toUpperCase()}
+                        </div>
+                        {user.username}
+                      </div>
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                        {roleById.get(user.roleId)?.name ?? "role"}
+                      </span>
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">{user.phone || "-"}</td>
+                    <td className="px-4 lg:px-6 py-4 text-right text-sm font-medium">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!user.id) return;
+                          const ok = await requirePasswordConfirm({
+                            title: "Delete user",
+                            message: `Delete user "${user.username}"?`,
+                          });
+                          if (!ok) return;
+                          if (user.uid) {
+                            await db.outbox.add(
+                              makeSyncEvent({
+                                entityType: "user.record",
+                                entityId: user.uid,
+                                op: "delete",
+                                payload: { uid: user.uid },
+                              })
+                            );
+                          }
+                          await deleteFarmCloudLogin(user.username);
+                          await db.users.delete(user.id);
+                        }}
+                        className="text-alert-red hover:text-alert-red/80"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         </div>
       )}
-    </div>
+    </PageRoot>
   );
 }

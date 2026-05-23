@@ -5,6 +5,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo } from "react";
 import { db, type LedgerAccount } from "@/lib/db";
 import { ArrowRight, HandCoins } from "lucide-react";
+import { PageRoot } from "@/components/ui/responsive-table";
 
 function computeBalances(entries: Array<{ accountId: number; debit: number; credit: number }>) {
   const sums = new Map<number, { debit: number; credit: number }>();
@@ -50,7 +51,7 @@ export default function OutstandingPage() {
   }, [accounts, entries]);
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-[#0f172a]">Outstanding</h1>
@@ -81,13 +82,13 @@ export default function OutstandingPage() {
           ) : (
             <div className="divide-y divide-[#e2e8f0]">
               {receivable.slice(0, 30).map((r) => (
-                <div key={r.account.id} className="p-6 flex items-center justify-between gap-4">
+                <div key={r.account.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-[#0f172a] truncate">{r.account.name}</div>
+                    <div className="text-sm font-semibold text-[#0f172a] break-words">{r.account.name}</div>
                     <div className="text-sm text-[#64748b]">{r.account.type}</div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-sm font-semibold text-[#80a932]">Rs. {r.balance.toLocaleString()}</div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="text-sm font-semibold text-[#80a932] tabular-nums">Rs. {r.balance.toLocaleString()}</div>
                     <Link
                       href={`/payments?direction=Receive&partyType=${r.account.type}&accountId=${r.account.id}`}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#e2e8f0] bg-white hover:bg-[#f8fafc] text-sm font-semibold text-[#0871b3]"
@@ -112,13 +113,15 @@ export default function OutstandingPage() {
           ) : (
             <div className="divide-y divide-[#e2e8f0]">
               {payable.slice(0, 30).map((r) => (
-                <div key={r.account.id} className="p-6 flex items-center justify-between gap-4">
+                <div key={r.account.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-[#0f172a] truncate">{r.account.name}</div>
+                    <div className="text-sm font-semibold text-[#0f172a] break-words">{r.account.name}</div>
                     <div className="text-sm text-[#64748b]">{r.account.type}</div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-sm font-semibold text-rose-700">Rs. {Math.abs(r.balance).toLocaleString()}</div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="text-sm font-semibold text-rose-700 tabular-nums">
+                      Rs. {Math.abs(r.balance).toLocaleString()}
+                    </div>
                     <Link
                       href={`/payments?direction=Pay&partyType=${r.account.type}&accountId=${r.account.id}`}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#e2e8f0] bg-white hover:bg-[#f8fafc] text-sm font-semibold text-[#0871b3]"
@@ -132,7 +135,7 @@ export default function OutstandingPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

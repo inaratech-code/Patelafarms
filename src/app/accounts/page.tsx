@@ -5,6 +5,12 @@ import { useMemo, useState } from "react";
 import { db, type FinancialAccount } from "@/lib/db";
 import { computeAccountBalance, sortAccountsForPicker } from "@/lib/accounts";
 import { Landmark, Plus, QrCode, Wallet } from "lucide-react";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 const typeIcon: Record<FinancialAccount["type"], React.ComponentType<{ className?: string }>> = {
   Cash: Wallet,
@@ -44,7 +50,7 @@ export default function AccountsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-[#0f172a]">Accounts</h1>
@@ -52,7 +58,7 @@ export default function AccountsPage() {
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-[#0871b3] text-white rounded-lg hover:bg-[#0871b3]/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-[#0871b3] text-white rounded-lg hover:bg-[#0871b3]/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "Add Account"}</span>
@@ -113,35 +119,62 @@ export default function AccountsPage() {
         {rows.length === 0 ? (
           <div className="p-8 text-center text-[#64748b]">No accounts yet. Add Cash/Bank/QR accounts.</div>
         ) : (
-          <table className="min-w-full divide-y divide-[#e2e8f0]">
-            <thead className="bg-[#f8fafc]">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Account</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Balance</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-[#e2e8f0]">
-              {rows.map((r) => {
-                const Icon = typeIcon[r.account.type];
-                return (
-                  <tr key={r.account.id}>
-                    <td className="px-6 py-4 text-sm text-[#64748b]">
-                      <div className="inline-flex items-center gap-2">
-                        <Icon className="w-4 h-4" />
+          <ResponsiveTableShell
+            mobileDivideClass="divide-[#e2e8f0]"
+            mobile={rows.map((r) => {
+              const Icon = typeIcon[r.account.type];
+              return (
+                <MobileDataCard key={r.account.id}>
+                  <MobileCardHeader
+                    title={r.account.name}
+                    subtitle={
+                      <span className="inline-flex items-center gap-1.5">
+                        <Icon className="w-3.5 h-3.5" />
                         {r.account.type}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-[#0f172a]">{r.account.name}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-right text-[#0f172a]">Rs. {r.balance.toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </span>
+                    }
+                    trailing={
+                      <span className="text-sm font-semibold text-[#0f172a] tabular-nums">
+                        Rs. {r.balance.toLocaleString()}
+                      </span>
+                    }
+                  />
+                </MobileDataCard>
+              );
+            })}
+          >
+            <table className="min-w-full divide-y divide-[#e2e8f0]">
+              <thead className="bg-[#f8fafc]">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Type</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Account</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-[#e2e8f0]">
+                {rows.map((r) => {
+                  const Icon = typeIcon[r.account.type];
+                  return (
+                    <tr key={r.account.id}>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-[#64748b]">
+                        <div className="inline-flex items-center gap-2">
+                          <Icon className="w-4 h-4" />
+                          {r.account.type}
+                        </div>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-[#0f172a]">{r.account.name}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-right text-[#0f172a] tabular-nums">
+                        Rs. {r.balance.toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

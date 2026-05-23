@@ -15,6 +15,7 @@ import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMet
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { buildSupplierNameOptions } from "@/lib/supplierOptions";
+import { PageRoot } from "@/components/ui/responsive-table";
 import { normalizeSaleUnit, SALE_UNIT_OPTIONS } from "@/lib/saleUnits";
 
 type LedgerOutAccount = { uid: string; name: string; type: string } | null;
@@ -569,21 +570,32 @@ export default function OrdersPage() {
     });
   };
 
+  const sortedSales = useMemo(
+    () => [...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [sales]
+  );
+  const sortedPurchases = useMemo(
+    () => [...purchases].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [purchases]
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <PageRoot>
+      <div className="space-y-4">
         <h1 className="text-2xl font-semibold text-slate-900">Order Management</h1>
-        <div className="flex bg-slate-100 p-1 rounded-lg">
-          <button onClick={() => setActiveTab('Sales')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Sales' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>Sales (POS)</button>
-          <button onClick={() => setActiveTab('Purchases')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Purchases' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>Purchases</button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex w-full sm:w-auto bg-slate-100 p-1 rounded-lg">
+            <button onClick={() => setActiveTab('Sales')} className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Sales' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>Sales (POS)</button>
+            <button onClick={() => setActiveTab('Purchases')} className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Purchases' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>Purchases</button>
+          </div>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            <span>{showForm ? "Cancel" : activeTab === 'Sales' ? "New Sale" : "New Purchase"}</span>
+          </button>
         </div>
-        <button 
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          <span>{showForm ? "Cancel" : activeTab === 'Sales' ? "New Sale" : "New Purchase"}</span>
-        </button>
       </div>
 
       {showForm && activeTab === 'Sales' && (
@@ -698,7 +710,7 @@ export default function OrdersPage() {
               </div>
             </>
           ) : null}
-          <div className="sm:col-span-2 lg:col-span-4 flex justify-between items-center mt-2 border-t pt-4">
+          <div className="sm:col-span-2 lg:col-span-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mt-2 border-t pt-4">
             <div className="text-lg font-semibold text-slate-900">
               Total: Rs. {saleTotal}
             </div>
@@ -837,6 +849,7 @@ export default function OrdersPage() {
             {purchaseForm.lineItems.length === 0 ? (
               <div className="px-4 py-6 text-sm text-slate-500">No items added yet.</div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-white">
                   <tr>
@@ -869,10 +882,11 @@ export default function OrdersPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
-          <div className="flex justify-between items-center border-t pt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center border-t pt-4">
             <div className="text-lg font-semibold text-slate-900">Total Cost: Rs. {purchaseTotal}</div>
             <button type="submit" className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90">
               Complete Purchase
@@ -881,88 +895,159 @@ export default function OrdersPage() {
         </form>
       )}
 
-      {/* History Tables */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      {/* History */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden min-w-0">
         {activeTab === 'Sales' ? (
-          sales.length === 0 ? (
+          sortedSales.length === 0 ? (
             <div className="p-8 text-center text-slate-500">
                <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                <p className="text-lg font-medium text-slate-900">No sales recorded</p>
             </div>
           ) : (
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Customer</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-200">
-                {sales.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(sale => {
-                  const item = inventory.find(i => i.id === sale.itemId);
+            <>
+              <div className="md:hidden divide-y divide-slate-100">
+                {sortedSales.map((sale) => {
+                  const item = inventory.find((i) => i.id === sale.itemId);
+                  const customerLabel = sale.customerName?.trim()
+                    ? sale.customerName.trim()
+                    : sale.paymentType === "Cash"
+                      ? "Cash sale"
+                      : "Credit sale";
+                  const unitLabel = sale.saleUnit ?? item?.unit ?? "pcs";
+                  const unitPrice =
+                    sale.unitPrice ?? (sale.quantity ? sale.totalPrice / sale.quantity : 0);
                   return (
-                    <tr key={sale.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(sale.date).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                        {sale.customerName?.trim()
-                          ? sale.customerName.trim()
-                          : sale.paymentType === "Cash"
-                            ? "Cash sale"
-                            : "Credit sale"}{" "}
-                        ({sale.paymentType})
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                    <div key={sale.id} className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-slate-900 break-words">
+                            {customerLabel}{" "}
+                            <span className="text-slate-500 font-normal">({sale.paymentType})</span>
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {new Date(sale.date).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-sm font-semibold text-alert-green tabular-nums">
+                          + Rs. {sale.totalPrice.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="text-sm text-slate-700 break-words">
                         {sale.quantity}x {item?.name || "Unknown"}
-                        <span className="block text-xs text-slate-500 mt-0.5">
-                          {sale.saleUnit ?? item?.unit ?? "pcs"} @ Rs.{" "}
-                          {(sale.unitPrice ??
-                            (sale.quantity ? sale.totalPrice / sale.quantity : 0)
-                          ).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                          /{sale.saleUnit ?? item?.unit ?? "unit"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-alert-green">+ Rs. {sale.totalPrice}</td>
-                    </tr>
-                  )
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {unitLabel} @ Rs. {unitPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                        /{unitLabel}
+                      </div>
+                    </div>
+                  );
                 })}
-              </tbody>
-            </table>
+              </div>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Customer</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {sortedSales.map((sale) => {
+                      const item = inventory.find((i) => i.id === sale.itemId);
+                      return (
+                        <tr key={sale.id}>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(sale.date).toLocaleDateString()}</td>
+                          <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">
+                            {sale.customerName?.trim()
+                              ? sale.customerName.trim()
+                              : sale.paymentType === "Cash"
+                                ? "Cash sale"
+                                : "Credit sale"}{" "}
+                            ({sale.paymentType})
+                          </td>
+                          <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">
+                            {sale.quantity}x {item?.name || "Unknown"}
+                            <span className="block text-xs text-slate-500 mt-0.5">
+                              {sale.saleUnit ?? item?.unit ?? "pcs"} @ Rs.{" "}
+                              {(sale.unitPrice ??
+                                (sale.quantity ? sale.totalPrice / sale.quantity : 0)
+                              ).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                              /{sale.saleUnit ?? item?.unit ?? "unit"}
+                            </span>
+                          </td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-alert-green">+ Rs. {sale.totalPrice}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )
         ) : (
-          purchases.length === 0 ? (
+          sortedPurchases.length === 0 ? (
             <div className="p-8 text-center text-slate-500">
                <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                <p className="text-lg font-medium text-slate-900">No purchases recorded</p>
             </div>
           ) : (
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Supplier</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cost</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-200">
-                {purchases.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(purchase => {
-                  const item = inventory.find(i => i.id === purchase.itemId);
+            <>
+              <div className="md:hidden divide-y divide-slate-100">
+                {sortedPurchases.map((purchase) => {
+                  const item = inventory.find((i) => i.id === purchase.itemId);
                   return (
-                    <tr key={purchase.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(purchase.date).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{purchase.supplierName}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{purchase.quantity}x {item?.name || 'Unknown'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">- Rs. {purchase.totalCost}</td>
-                    </tr>
-                  )
+                    <div key={purchase.id} className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-slate-900 break-words">
+                            {purchase.supplierName}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {new Date(purchase.date).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
+                          - Rs. {purchase.totalCost.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="text-sm text-slate-700 break-words">
+                        {purchase.quantity}x {item?.name || "Unknown"}
+                      </div>
+                    </div>
+                  );
                 })}
-              </tbody>
-            </table>
+              </div>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Supplier</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {sortedPurchases.map((purchase) => {
+                      const item = inventory.find((i) => i.id === purchase.itemId);
+                      return (
+                        <tr key={purchase.id}>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(purchase.date).toLocaleDateString()}</td>
+                          <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{purchase.supplierName}</td>
+                          <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{purchase.quantity}x {item?.name || "Unknown"}</td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">- Rs. {purchase.totalCost}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }

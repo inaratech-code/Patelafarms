@@ -16,6 +16,13 @@ import {
   FARM_HEALTH_EXPENSE_CATEGORY,
   LOSS_EXPENSE_CATEGORY,
 } from "@/lib/erp/expenseEntries";
+import {
+  MobileCardDl,
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 function dayBookTypeBadgeClass(type: string): string {
   if (type === "Sale") return "bg-emerald-50 text-emerald-800";
@@ -79,7 +86,7 @@ export default function DayBookPage() {
   }, [allEntries, rows, selectedDate]);
 
   return (
-    <div className="space-y-4">
+    <PageRoot className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Day Book</h1>
@@ -127,8 +134,64 @@ export default function DayBookPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-w-0">
+        <ResponsiveTableShell
+          mobile={
+            rows.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">No transactions for this date.</div>
+            ) : (
+              rows.map((e) => {
+                const type = dayBookJournalType(e);
+                const party = dayBookPartyLabel(e);
+                const mode = dayBookPaymentModeLabel(e);
+                const status = dayBookStatusLabel(e);
+                const cashRow = dayBookEntryAffectsCash(e);
+                return (
+                  <MobileDataCard key={e.id ?? e.uid ?? e.time + e.description}>
+                    <MobileCardHeader
+                      title={party}
+                      subtitle={formatTime(e.time)}
+                      trailing={
+                        <span
+                          className={`text-sm font-semibold tabular-nums ${e.type === "Income" ? "text-emerald-700" : "text-rose-700"}`}
+                        >
+                          {e.type === "Income" ? "+" : "-"} Rs. {formatMoney(e.amount)}
+                        </span>
+                      }
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${dayBookTypeBadgeClass(type)}`}
+                      >
+                        {type}
+                      </span>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          status === "Unpaid"
+                            ? "bg-red-50 text-red-800"
+                            : status === "Due" || status === "Partial"
+                              ? "bg-orange-50 text-orange-900"
+                              : status === "Paid"
+                                ? "bg-emerald-50 text-emerald-800"
+                                : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {status}
+                        {!cashRow ? " · journal" : ""}
+                      </span>
+                    </div>
+                    <MobileCardDl
+                      rows={[
+                        { label: "Payment", value: mode },
+                        { label: "Details", value: e.description, fullWidth: true },
+                      ]}
+                    />
+                  </MobileDataCard>
+                );
+              })
+            )
+          }
+        >
           <table className="min-w-[900px] w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-600">
@@ -195,8 +258,8 @@ export default function DayBookPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTableShell>
       </div>
-    </div>
+    </PageRoot>
   );
 }

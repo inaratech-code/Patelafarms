@@ -158,7 +158,7 @@ export function AppShell(props: { children: React.ReactNode }) {
         <SidebarDesktop />
         <div className="flex flex-col flex-1 w-full lg:pl-64 min-w-0">
           <TopHeader />
-          <main className="flex-1 min-h-0 min-w-0 p-3 sm:p-5 lg:p-8 overflow-y-auto pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-8">
+          <main className="flex-1 min-h-0 min-w-0 max-w-full overflow-x-hidden overflow-y-auto p-3 sm:p-5 lg:p-8 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-8">
             {props.children}
           </main>
         </div>

@@ -13,6 +13,12 @@ import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 import { buildExpenseCategoryOptions, rememberExpenseCategory } from "@/lib/expenseCategories";
 import { expenseDisplayCategory, isCashExpenseEntry } from "@/lib/erp/expenseEntries";
 import { localMonthKey, monthKeyFromStoredInstant } from "@/lib/erp/metrics";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -134,7 +140,7 @@ export default function ExpensesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Expenses</h1>
@@ -148,7 +154,7 @@ export default function ExpensesPage() {
             if (showForm) return setShowForm(false);
             setShowGate(true);
           }}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "Add Expense"}</span>
@@ -297,33 +303,50 @@ export default function ExpensesPage() {
         {sorted.length === 0 ? (
           <div className="p-8 text-center text-slate-500">No expenses recorded.</div>
         ) : (
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Category</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Description</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {sorted.slice(0, 50).map((e) => (
-                <tr key={e.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {new Date(e.time).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{expenseDisplayCategory(e)}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{e.description}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-slate-900">
-                    Rs. {e.amount.toLocaleString()}
-                  </td>
+          <ResponsiveTableShell
+            mobile={sorted.slice(0, 50).map((e) => (
+              <MobileDataCard key={e.id}>
+                <MobileCardHeader
+                  title={expenseDisplayCategory(e)}
+                  subtitle={new Date(e.time).toLocaleDateString()}
+                  trailing={
+                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                      Rs. {e.amount.toLocaleString()}
+                    </span>
+                  }
+                />
+                <p className="text-sm text-slate-700 break-words">{e.description}</p>
+              </MobileDataCard>
+            ))}
+          >
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Category</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Description</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {sorted.slice(0, 50).map((e) => (
+                  <tr key={e.id}>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">
+                      {new Date(e.time).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{expenseDisplayCategory(e)}</td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{e.description}</td>
+                    <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-right text-slate-900 tabular-nums">
+                      Rs. {e.amount.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

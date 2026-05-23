@@ -11,6 +11,7 @@ import { newUid } from "@/lib/uid";
 import { isConsumable, isSellable, resolveItemType } from "@/lib/erp/items";
 import { normalizeDecimalInput, parseDecimalInput } from "@/lib/decimalInput";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
+import { PageRoot } from "@/components/ui/responsive-table";
 
 export default function InventoryPage() {
   const items = useLiveQuery(() => db.inventory.toArray());
@@ -120,12 +121,12 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-semibold text-slate-900">Inventory Management</h1>
         <button 
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
           <PackagePlus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "Add New Item"}</span>
@@ -434,6 +435,6 @@ export default function InventoryPage() {
           })}
         </div>
       )}
-    </div>
+    </PageRoot>
   );
 }

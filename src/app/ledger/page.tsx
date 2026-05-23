@@ -9,6 +9,7 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { CASH_LEDGER_NAME, getOrCreateCashLedgerAccountId } from "@/lib/ledger";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
+import { PageRoot } from "@/components/ui/responsive-table";
 
 function asDrCr(amount: number) {
   if (amount === 0) return { label: "0", side: "" as const };
@@ -126,12 +127,12 @@ export default function LedgerPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-semibold text-slate-900">Ledger Accounts</h1>
         <button 
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "New Account"}</span>
@@ -263,6 +264,6 @@ export default function LedgerPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageRoot>
   );
 }

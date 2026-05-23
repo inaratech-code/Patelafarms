@@ -9,6 +9,12 @@ import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
 import { LOSS_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 const lossTypes: Array<{ id: InventoryLossType; label: string; badge: string }> = [
   { id: "Dead", label: "Dead", badge: "bg-rose-500/10 text-rose-700" },
@@ -182,7 +188,7 @@ export default function LossWastagePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Inventory Loss / Wastage</h1>
@@ -193,7 +199,7 @@ export default function LossWastagePage() {
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "Add Loss"}</span>
@@ -317,41 +323,71 @@ export default function LossWastagePage() {
         {sorted.length === 0 ? (
           <div className="p-8 text-center text-slate-500">No losses recorded.</div>
         ) : (
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Qty</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Cost</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {sorted.slice(0, 50).map((l) => {
-                const item = inventory.find((i) => i.id === l.itemId);
-                const tone = lossTypes.find((t) => t.id === l.lossType)?.badge ?? "bg-slate-500/10 text-slate-700";
-                return (
-                  <tr key={l.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{new Date(l.date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-sm text-slate-900">{item?.name ?? "Unknown"}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${tone}`}>{l.lossType}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+          <ResponsiveTableShell
+            mobile={sorted.slice(0, 50).map((l) => {
+              const item = inventory.find((i) => i.id === l.itemId);
+              const tone = lossTypes.find((t) => t.id === l.lossType)?.badge ?? "bg-slate-500/10 text-slate-700";
+              return (
+                <MobileDataCard key={l.id}>
+                  <MobileCardHeader
+                    title={item?.name ?? "Unknown"}
+                    subtitle={new Date(l.date).toLocaleDateString()}
+                    trailing={
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                        Rs. {l.estimatedCost.toLocaleString()}
+                      </span>
+                    }
+                  />
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${tone}`}>
+                      {l.lossType}
+                    </span>
+                    <span>
                       {l.quantity} {l.unit}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-slate-900">
-                      Rs. {l.estimatedCost.toLocaleString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </span>
+                  </div>
+                </MobileDataCard>
+              );
+            })}
+          >
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Qty</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Cost</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {sorted.slice(0, 50).map((l) => {
+                  const item = inventory.find((i) => i.id === l.itemId);
+                  const tone = lossTypes.find((t) => t.id === l.lossType)?.badge ?? "bg-slate-500/10 text-slate-700";
+                  return (
+                    <tr key={l.id}>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">{new Date(l.date).toLocaleDateString()}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{item?.name ?? "Unknown"}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${tone}`}>
+                          {l.lossType}
+                        </span>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">
+                        {l.quantity} {l.unit}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-right text-slate-900 tabular-nums">
+                        Rs. {l.estimatedCost.toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

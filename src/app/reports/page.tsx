@@ -11,6 +11,12 @@ import {
   monthKeyFromStoredInstant,
 } from "@/lib/erp/metrics";
 import { isGeneralOperatingExpenseEntry } from "@/lib/erp/expenseEntries";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 
 function dayKey(d: Date) {
@@ -126,7 +132,7 @@ export default function ReportsPage() {
   }, [losses, itemsById]);
 
   return (
-    <div className="space-y-8">
+    <PageRoot className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Reports</h1>
@@ -241,36 +247,46 @@ export default function ReportsPage() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Top selling items ({periodLabel})</h2>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="py-2 pr-4">Item</th>
-                <th className="py-2 pr-4">Qty sold</th>
-                <th className="py-2">Revenue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topSelling.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="py-4 text-slate-500">
-                    No sales in this period.
-                  </td>
+        {topSelling.length === 0 ? (
+          <p className="mt-4 py-4 text-sm text-slate-500">No sales in this period.</p>
+        ) : (
+          <ResponsiveTableShell
+            mobile={topSelling.map((r) => (
+              <MobileDataCard key={r.itemId}>
+                <MobileCardHeader
+                  title={r.name}
+                  subtitle={`Qty sold: ${r.qty}`}
+                  trailing={
+                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                      Rs. {r.revenue.toLocaleString()}
+                    </span>
+                  }
+                />
+              </MobileDataCard>
+            ))}
+          >
+            <table className="min-w-full text-sm mt-4">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <th className="py-2 pr-4">Item</th>
+                  <th className="py-2 pr-4">Qty sold</th>
+                  <th className="py-2">Revenue</th>
                 </tr>
-              ) : (
-                topSelling.map((r) => (
+              </thead>
+              <tbody>
+                {topSelling.map((r) => (
                   <tr key={r.itemId} className="border-b border-slate-100">
                     <td className="py-2 pr-4 font-medium text-slate-900">{r.name}</td>
                     <td className="py-2 pr-4 text-slate-600">{r.qty}</td>
-                    <td className="py-2 text-slate-900">Rs. {r.revenue.toLocaleString()}</td>
+                    <td className="py-2 text-slate-900 tabular-nums">Rs. {r.revenue.toLocaleString()}</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
+        )}
       </section>
-    </div>
+    </PageRoot>
   );
 }
 

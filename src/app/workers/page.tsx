@@ -5,6 +5,13 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/db";
 import { Plus, Users, ArrowRight, HandCoins } from "lucide-react";
+import {
+  MobileCardActions,
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 function computeBalances(entries: Array<{ accountId: number; debit: number; credit: number }>) {
   const sums = new Map<number, { debit: number; credit: number }>();
@@ -45,7 +52,7 @@ export default function WorkersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-[#0f172a]">Workers</h1>
@@ -53,7 +60,7 @@ export default function WorkersPage() {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-[#0871b3] text-white rounded-lg hover:bg-[#0871b3]/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-[#0871b3] text-white rounded-lg hover:bg-[#0871b3]/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "Add Worker"}</span>
@@ -89,49 +96,88 @@ export default function WorkersPage() {
         {rows.length === 0 ? (
           <div className="p-8 text-center text-[#64748b]">No workers yet.</div>
         ) : (
-          <table className="min-w-full divide-y divide-[#e2e8f0]">
-            <thead className="bg-[#f8fafc]">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Worker</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Outstanding</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-[#e2e8f0]">
-              {rows.map((r) => {
-                const isReceivable = r.balance > 0;
-                const value = Math.abs(r.balance);
-                return (
-                  <tr key={r.account.id}>
-                    <td className="px-6 py-4 text-sm font-semibold text-[#0f172a]">{r.account.name}</td>
-                    <td className={`px-6 py-4 text-sm font-semibold text-right ${isReceivable ? "text-[#80a932]" : "text-rose-700"}`}>
-                      Rs. {value.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <div className="inline-flex items-center gap-3">
-                        <Link
-                          href={`/payments?direction=${isReceivable ? "Receive" : "Pay"}&partyType=Worker&accountId=${r.account.id}`}
-                          className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
-                        >
-                          <HandCoins className="w-4 h-4" />
-                          {isReceivable ? "Receive" : "Pay"}
-                        </Link>
-                        <Link
-                          href={`/ledger/${r.account.id}`}
-                          className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
-                        >
-                          Open <ArrowRight className="w-4 h-4" />
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <ResponsiveTableShell
+            mobileDivideClass="divide-[#e2e8f0]"
+            mobile={rows.map((r) => {
+              const isReceivable = r.balance > 0;
+              const value = Math.abs(r.balance);
+              return (
+                <MobileDataCard key={r.account.id}>
+                  <MobileCardHeader
+                    title={r.account.name}
+                    trailing={
+                      <span
+                        className={`text-sm font-semibold tabular-nums ${isReceivable ? "text-[#80a932]" : "text-rose-700"}`}
+                      >
+                        Rs. {value.toLocaleString()}
+                      </span>
+                    }
+                  />
+                  <MobileCardActions>
+                    <Link
+                      href={`/payments?direction=${isReceivable ? "Receive" : "Pay"}&partyType=Worker&accountId=${r.account.id}`}
+                      className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
+                    >
+                      <HandCoins className="w-4 h-4" />
+                      {isReceivable ? "Receive" : "Pay"}
+                    </Link>
+                    <Link
+                      href={`/ledger/${r.account.id}`}
+                      className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
+                    >
+                      Open <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  </MobileCardActions>
+                </MobileDataCard>
+              );
+            })}
+          >
+            <table className="min-w-full divide-y divide-[#e2e8f0]">
+              <thead className="bg-[#f8fafc]">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Worker</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Outstanding</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-[#e2e8f0]">
+                {rows.map((r) => {
+                  const isReceivable = r.balance > 0;
+                  const value = Math.abs(r.balance);
+                  return (
+                    <tr key={r.account.id}>
+                      <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-[#0f172a]">{r.account.name}</td>
+                      <td
+                        className={`px-4 lg:px-6 py-4 text-sm font-semibold text-right tabular-nums ${isReceivable ? "text-[#80a932]" : "text-rose-700"}`}
+                      >
+                        Rs. {value.toLocaleString()}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-right">
+                        <div className="inline-flex items-center gap-3">
+                          <Link
+                            href={`/payments?direction=${isReceivable ? "Receive" : "Pay"}&partyType=Worker&accountId=${r.account.id}`}
+                            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
+                          >
+                            <HandCoins className="w-4 h-4" />
+                            {isReceivable ? "Receive" : "Pay"}
+                          </Link>
+                          <Link
+                            href={`/ledger/${r.account.id}`}
+                            className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
+                          >
+                            Open <ArrowRight className="w-4 h-4" />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

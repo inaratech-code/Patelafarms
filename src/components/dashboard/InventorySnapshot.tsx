@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Package, ArrowRight } from "lucide-react";
+import {
+  MobileCardActions,
+  MobileCardHeader,
+  MobileDataCard,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 type Item = {
   id?: number;
@@ -38,7 +44,30 @@ export function InventorySnapshot(props: { items: Item[] }) {
         {props.items.length === 0 ? (
           <div className="text-sm text-[#64748b]">No low stock items right now.</div>
         ) : (
-          <div className="w-full overflow-x-auto">
+          <ResponsiveTableShell
+            mobileDivideClass="divide-[#e2e8f0]"
+            mobile={props.items.map((i) => {
+              const s = statusFor(i);
+              return (
+                <MobileDataCard key={i.id ?? i.name}>
+                  <MobileCardHeader
+                    title={i.name}
+                    subtitle={`${i.quantity} ${i.unit}`}
+                    trailing={
+                      <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${s.cls}`}>
+                        {s.label}
+                      </span>
+                    }
+                  />
+                  <MobileCardActions>
+                    <Link href="/inventory" className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]">
+                      Open inventory <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  </MobileCardActions>
+                </MobileDataCard>
+              );
+            })}
+          >
             <table className="min-w-[720px] w-full">
               <thead>
                 <tr className="text-xs font-semibold text-[#64748b]">
@@ -72,7 +101,7 @@ export function InventorySnapshot(props: { items: Item[] }) {
                 })}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTableShell>
         )}
       </div>
     </motion.section>

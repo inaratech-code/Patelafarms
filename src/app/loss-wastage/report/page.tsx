@@ -3,6 +3,12 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { db, type InventoryLossType } from "@/lib/db";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -52,7 +58,7 @@ export default function LossReportPage() {
   }, [inventory, totals.byItem]);
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Loss Report</h1>
@@ -153,35 +159,57 @@ export default function LossReportPage() {
         {filtered.length === 0 ? (
           <div className="p-8 text-center text-slate-500">No loss entries.</div>
         ) : (
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Value</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {filtered
-                .slice()
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .slice(0, 80)
-                .map((l) => (
-                  <tr key={l.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{new Date(l.date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-sm text-slate-900">{inventory.find((i) => i.id === l.itemId)?.name ?? "Unknown"}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{l.lossType}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-slate-900">
-                      Rs. {l.estimatedCost.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          <ResponsiveTableShell
+            mobile={filtered
+              .slice()
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .slice(0, 80)
+              .map((l) => (
+                <MobileDataCard key={l.id}>
+                  <MobileCardHeader
+                    title={inventory.find((i) => i.id === l.itemId)?.name ?? "Unknown"}
+                    subtitle={`${new Date(l.date).toLocaleDateString()} · ${l.lossType}`}
+                    trailing={
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                        Rs. {l.estimatedCost.toLocaleString()}
+                      </span>
+                    }
+                  />
+                </MobileDataCard>
+              ))}
+          >
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Value</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {filtered
+                  .slice()
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .slice(0, 80)
+                  .map((l) => (
+                    <tr key={l.id}>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">{new Date(l.date).toLocaleDateString()}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">
+                        {inventory.find((i) => i.id === l.itemId)?.name ?? "Unknown"}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{l.lossType}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-right text-slate-900 tabular-nums">
+                        Rs. {l.estimatedCost.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

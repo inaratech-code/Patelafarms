@@ -5,6 +5,12 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/db";
 import { Plus, Users, ArrowRight } from "lucide-react";
+import {
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 export default function CustomersPage() {
   const accounts = useLiveQuery(() => db.ledgerAccounts.where("type").equals("Customer").toArray()) || [];
@@ -41,7 +47,7 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Customers</h1>
@@ -49,7 +55,7 @@ export default function CustomersPage() {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>{showForm ? "Cancel" : "Add Customer"}</span>
@@ -85,36 +91,57 @@ export default function CustomersPage() {
         {balances.length === 0 ? (
           <div className="p-8 text-center text-slate-500">No customers yet.</div>
         ) : (
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Customer</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Receivable</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Ledger</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {balances.map((r) => (
-                <tr key={r.account.id}>
-                  <td className="px-6 py-4 text-sm font-medium text-slate-900">{r.account.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-alert-green">
-                    Rs. {Math.max(0, r.balance).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <Link
-                      href={`/ledger/${r.account.id}`}
-                      className="inline-flex items-center gap-2 text-primary font-medium text-sm"
-                    >
-                      Open <ArrowRight className="w-4 h-4" />
-                    </Link>
-                  </td>
+          <ResponsiveTableShell
+            mobile={balances.map((r) => (
+              <MobileDataCard key={r.account.id}>
+                <MobileCardHeader
+                  title={r.account.name}
+                  trailing={
+                    <span className="text-sm font-semibold text-alert-green tabular-nums">
+                      Rs. {Math.max(0, r.balance).toLocaleString()}
+                    </span>
+                  }
+                />
+                <Link
+                  href={`/ledger/${r.account.id}`}
+                  className="inline-flex items-center gap-2 text-primary font-medium text-sm"
+                >
+                  Open ledger <ArrowRight className="w-4 h-4" />
+                </Link>
+              </MobileDataCard>
+            ))}
+          >
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Customer</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Receivable</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Ledger</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {balances.map((r) => (
+                  <tr key={r.account.id}>
+                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-slate-900">{r.account.name}</td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-right font-semibold text-alert-green tabular-nums">
+                      Rs. {Math.max(0, r.balance).toLocaleString()}
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-right">
+                      <Link
+                        href={`/ledger/${r.account.id}`}
+                        className="inline-flex items-center gap-2 text-primary font-medium text-sm"
+                      >
+                        Open <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

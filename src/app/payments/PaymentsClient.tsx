@@ -8,6 +8,13 @@ import { db, type FinancialAccount, type LedgerAccount, type Payment } from "@/l
 import { postPayment } from "@/lib/payments";
 import { computeAccountBalance, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { ArrowRight, HandCoins, Plus } from "lucide-react";
+import {
+  MobileCardActions,
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 type Direction = Payment["direction"];
 type PartyType = LedgerAccount["type"];
@@ -155,7 +162,7 @@ export function PaymentsClient() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-[#0f172a]">Payments</h1>
@@ -314,33 +321,57 @@ export function PaymentsClient() {
         {paymentHistory.length === 0 ? (
           <div className="p-8 text-center text-[#64748b]">No payments posted yet.</div>
         ) : (
-          <div className="w-full overflow-x-auto">
+          <ResponsiveTableShell
+            mobileDivideClass="divide-[#e2e8f0]"
+            mobile={paymentHistory.slice(0, 50).map((r) => (
+              <MobileDataCard key={r.payment.id}>
+                <MobileCardHeader
+                  title={r.party?.name ?? "Unknown"}
+                  subtitle={`${new Date(r.payment.date).toLocaleDateString()} · ${r.payment.partyType} · ${r.payment.direction}`}
+                  trailing={
+                    <span className="text-sm font-semibold text-[#0f172a] tabular-nums">
+                      Rs. {r.payment.amount.toLocaleString()}
+                    </span>
+                  }
+                />
+                {r.payment.note ? <p className="text-sm text-[#64748b] break-words">{r.payment.note}</p> : null}
+                <MobileCardActions>
+                  <Link
+                    href={r.party?.id ? `/ledger/${r.party.id}` : "/ledger"}
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
+                  >
+                    Open ledger <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </MobileCardActions>
+              </MobileDataCard>
+            ))}
+          >
             <table className="min-w-[900px] w-full divide-y divide-[#e2e8f0]">
               <thead className="bg-[#f8fafc]">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Party</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Direction</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Note</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Open</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Date</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Party</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Type</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Direction</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Amount</th>
+                  <th className="px-4 lg:px-6 py-3 text-left text-xs font-semibold text-[#64748b] uppercase">Note</th>
+                  <th className="px-4 lg:px-6 py-3 text-right text-xs font-semibold text-[#64748b] uppercase">Open</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-[#e2e8f0]">
                 {paymentHistory.slice(0, 50).map((r) => (
                   <tr key={r.payment.id}>
-                    <td className="px-6 py-4 text-sm text-[#64748b] whitespace-nowrap">
+                    <td className="px-4 lg:px-6 py-4 text-sm text-[#64748b]">
                       {new Date(r.payment.date).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-[#0f172a]">{r.party?.name ?? "Unknown"}</td>
-                    <td className="px-6 py-4 text-sm text-[#64748b]">{r.payment.partyType}</td>
-                    <td className="px-6 py-4 text-sm text-[#64748b]">{r.payment.direction}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-right text-[#0f172a]">
+                    <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-[#0f172a]">{r.party?.name ?? "Unknown"}</td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-[#64748b]">{r.payment.partyType}</td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-[#64748b]">{r.payment.direction}</td>
+                    <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-right text-[#0f172a] tabular-nums">
                       Rs. {r.payment.amount.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-sm text-[#64748b]">{r.payment.note || "-"}</td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 lg:px-6 py-4 text-sm text-[#64748b]">{r.payment.note || "-"}</td>
+                    <td className="px-4 lg:px-6 py-4 text-right">
                       <Link
                         href={r.party?.id ? `/ledger/${r.party.id}` : "/ledger"}
                         className="inline-flex items-center gap-2 text-sm font-semibold text-[#0871b3]"
@@ -352,7 +383,7 @@ export function PaymentsClient() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTableShell>
         )}
       </div>
 
@@ -360,7 +391,7 @@ export function PaymentsClient() {
         <Plus className="w-4 h-4" />
         Tip: Use Outstanding page to quickly Receive/Pay from dues list.
       </div>
-    </div>
+    </PageRoot>
   );
 }
 

@@ -5,6 +5,13 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { ArrowLeft } from "lucide-react";
 import { useMemo } from "react";
+import {
+  MobileCardDl,
+  MobileCardHeader,
+  MobileDataCard,
+  PageRoot,
+  ResponsiveTableShell,
+} from "@/components/ui/responsive-table";
 
 /** Line-item debit/credit: always show the number (including 0) so both columns stay visible. */
 function formatLedgerSide(n: number) {
@@ -71,8 +78,8 @@ export function LedgerDetailClient(props: { accountId: number }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+    <PageRoot>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <Link
           href="/ledger"
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-medium text-slate-700"
@@ -83,11 +90,11 @@ export function LedgerDetailClient(props: { accountId: number }) {
         <div className="text-sm text-slate-500">Dr = balance receivable · Cr = balance payable</div>
       </div>
 
-      <div className="rounded-xl shadow-sm border border-slate-300 overflow-hidden bg-white">
-        <div className="px-6 py-4 border-b border-slate-300 bg-emerald-50">
+      <div className="rounded-xl shadow-sm border border-slate-300 overflow-hidden bg-white min-w-0">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-300 bg-emerald-50">
           <div className="text-center text-lg font-bold text-slate-900">Ledger Reconciliation</div>
         </div>
-        <div className="px-6 py-4 border-b border-slate-300 flex items-center justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-sm text-slate-700">
             <span className="font-semibold">{account?.name ?? "Account"}</span>
             {account?.type ? <span className="text-slate-500"> ({account.type})</span> : null}
@@ -105,7 +112,34 @@ export function LedgerDetailClient(props: { accountId: number }) {
         {rows.length === 0 ? (
           <div className="p-10 text-center text-slate-500">No ledger entries yet.</div>
         ) : (
-          <div className="w-full overflow-x-auto">
+          <ResponsiveTableShell
+            mobile={rows.map((e) => (
+              <MobileDataCard key={e.id}>
+                <MobileCardHeader
+                  title={e.description}
+                  subtitle={formatDate(e.date)}
+                  trailing={
+                    <span className="text-sm font-bold text-slate-900 tabular-nums">
+                      {e.closing === 0 ? (
+                        "0"
+                      ) : (
+                        <>
+                          {Math.abs(e.closing).toLocaleString()}{" "}
+                          <span className="text-xs font-semibold text-slate-600">{asDrCr(e.closing)}</span>
+                        </>
+                      )}
+                    </span>
+                  }
+                />
+                <MobileCardDl
+                  rows={[
+                    { label: "Debit", value: <span className="text-emerald-700">{formatLedgerSide(e.debit)}</span> },
+                    { label: "Credit", value: <span className="text-rose-700">{formatLedgerSide(e.credit)}</span> },
+                  ]}
+                />
+              </MobileDataCard>
+            ))}
+          >
             <table className="min-w-[1100px] w-full border-collapse">
               <thead>
                 <tr className="bg-emerald-100">
@@ -176,10 +210,10 @@ export function LedgerDetailClient(props: { accountId: number }) {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </ResponsiveTableShell>
         )}
       </div>
-    </div>
+    </PageRoot>
   );
 }
 
