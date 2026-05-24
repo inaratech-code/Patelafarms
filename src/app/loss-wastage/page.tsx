@@ -8,6 +8,7 @@ import { db, type InventoryLossType } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
+import { postCashLedgerExpense } from "@/lib/ledger";
 import { LOSS_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
 import {
   MobileCardHeader,
@@ -147,6 +148,12 @@ export default function LossWastagePage() {
           refId: lossUid,
         };
         const dayBookId = await db.dayBook.add(day);
+
+        await postCashLedgerExpense({
+          date,
+          description,
+          amount: cost,
+        });
 
         // 5) Outbox for sync + activity log
         await db.outbox.add(

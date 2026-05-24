@@ -125,3 +125,41 @@ export async function addLedgerEntry(params: {
   return await db.ledgerEntries.add(entry);
 }
 
+/** Posts a cash outflow to the "Cash sales & expenses" ledger and syncs to outbox. */
+export async function postCashLedgerExpense(params: {
+  date: string;
+  description: string;
+  amount: number;
+}) {
+  const cashLedgerId = await getOrCreateCashLedgerAccountId();
+  const ledgerEntryId = (await addLedgerEntry({
+    accountId: cashLedgerId,
+    date: params.date,
+    description: params.description,
+    debit: 0,
+    credit: params.amount,
+  })) as number;
+  const acct = await db.ledgerAccounts.get(cashLedgerId);
+  const entryRow = await db.ledgerEntries.get(ledgerEntryId);
+  if (acct?.uid && entryRow?.uid) {
+    await db.outbox.add(
+      makeSyncEvent({
+        entityType: "ledger.entry",
+        entityId: entryRow.uid,
+        op: "create",
+        payload: {
+          account: { uid: acct.uid, name: acct.name, type: acct.type },
+          entry: {
+            uid: entryRow.uid,
+            date: entryRow.date,
+            description: entryRow.description,
+            debit: entryRow.debit,
+            credit: entryRow.credit,
+          },
+        },
+      })
+    );
+  }
+  return { cashLedgerId, ledgerEntryId };
+}
+

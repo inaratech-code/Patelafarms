@@ -10,6 +10,7 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
 import { FEED_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
 import { assertStockAvailable, isConsumable, resolveItemType } from "@/lib/erp/items";
+import { postCashLedgerExpense } from "@/lib/ledger";
 import { normalizeDecimalInput, parseDecimalInput } from "@/lib/decimalInput";
 import { ArrowLeft } from "lucide-react";
 
@@ -132,6 +133,12 @@ function ConsumptionPageInner() {
           refId: String(logUid),
         };
         await db.dayBook.add(day);
+
+        await postCashLedgerExpense({
+          date: iso,
+          description: desc,
+          amount: cost,
+        });
 
         await db.outbox.add(
           makeSyncEvent({
