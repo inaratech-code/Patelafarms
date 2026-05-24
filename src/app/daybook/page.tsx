@@ -43,10 +43,6 @@ function formatMoney(amount: number): string {
   });
 }
 
-function formatTime(isoTime: string) {
-  const d = new Date(isoTime);
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
-}
 
 export default function DayBookPage() {
   const allEntries = useLiveQuery(() => db.dayBook.toArray()) || [];
@@ -150,7 +146,6 @@ export default function DayBookPage() {
                   <MobileDataCard key={e.id ?? e.uid ?? e.time + e.description}>
                     <MobileCardHeader
                       title={party}
-                      subtitle={formatTime(e.time)}
                       trailing={
                         <span
                           className={`text-sm font-semibold tabular-nums ${e.type === "Income" ? "text-emerald-700" : "text-rose-700"}`}
@@ -195,7 +190,6 @@ export default function DayBookPage() {
           <table className="min-w-[900px] w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-600">
-                <th className="px-4 py-3">Time</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Party</th>
                 <th className="px-4 py-3 text-right">Amount</th>
@@ -207,7 +201,7 @@ export default function DayBookPage() {
             <tbody className="divide-y divide-slate-100">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                     No transactions for this date.
                   </td>
                 </tr>
@@ -220,7 +214,6 @@ export default function DayBookPage() {
                   const cashRow = dayBookEntryAffectsCash(e);
                   return (
                     <tr key={e.id ?? e.uid ?? e.time + e.description} className="hover:bg-slate-50/80">
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatTime(e.time)}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${dayBookTypeBadgeClass(type)}`}
