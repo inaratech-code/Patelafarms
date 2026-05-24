@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { db, type ConsumptionCategory } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { getOrCreateDefaultCashAccountId } from "@/lib/accounts";
 import { FEED_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
 import { assertStockAvailable, isConsumable, resolveItemType } from "@/lib/erp/items";
+import { normalizeDecimalInput, parseDecimalInput } from "@/lib/decimalInput";
 import { ArrowLeft } from "lucide-react";
 
 const categories: Array<{ id: ConsumptionCategory; label: string }> = [
@@ -36,6 +37,7 @@ function ConsumptionPageInner() {
 
   const [itemId, setItemId] = useState(() => (itemIdFromUrl > 0 ? itemIdFromUrl : 0));
   const [qtyStr, setQtyStr] = useState("1");
+  const [unitCostStr, setUnitCostStr] = useState("");
   const [category, setCategory] = useState<ConsumptionCategory>("feed_used");
   const [notes, setNotes] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -43,13 +45,29 @@ function ConsumptionPageInner() {
 
   const selected = inventory.find((i) => i.id === itemId);
 
+  useEffect(() => {
+    if (!selected?.id) {
+      setUnitCostStr("");
+      return;
+    }
+    const defaultCost = Number(selected.avgCost ?? selected.costPrice ?? 0);
+    setUnitCostStr(defaultCost > 0 ? String(defaultCost) : "");
+  }, [selected?.id]);
+
+  const estimatedTotal = useMemo(() => {
+    const qty = parseDecimalInput(qtyStr);
+    const unit = parseDecimalInput(unitCostStr);
+    if (qty == null || unit == null || qty <= 0 || unit <= 0) return null;
+    return qty * unit;
+  }, [qtyStr, unitCostStr]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected?.id) return alert("Select a consumable item.");
     if (!isConsumable(selected)) return alert("This item is not marked as consumable. Change item type on Inventory (feed).");
 
-    const qty = Number(qtyStr);
-    if (!Number.isFinite(qty) || qty <= 0) return alert("Enter a valid quantity.");
+    const qty = parseDecimalInput(qtyStr);
+    if (qty == null || qty <= 0) return alert("Enter a valid quantity.");
 
     try {
       assertStockAvailable(selected.quantity, qty);
@@ -57,7 +75,14 @@ function ConsumptionPageInner() {
       return alert(err instanceof Error ? err.message : "Stock error");
     }
 
-    const unitCost = Number(selected.avgCost ?? selected.costPrice ?? 0);
+    let unitCost = parseDecimalInput(unitCostStr.trim());
+    if (unitCost == null || unitCost <= 0) {
+      unitCost = Number(selected.avgCost ?? selected.costPrice ?? 0);
+    }
+    if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      return alert("Enter a valid cost per unit (greater than 0), or set a cost on the item.");
+    }
+
     const cost = qty * unitCost;
     const iso = new Date(`${date}T12:00:00`).toISOString();
     const logUid = newUid();
@@ -127,6 +152,7 @@ function ConsumptionPageInner() {
         );
       });
       setQtyStr("1");
+      setUnitCostStr(selected ? String(Number(selected.avgCost ?? selected.costPrice ?? 0) || "") : "");
       setNotes("");
       alert("Consumption recorded.");
     } catch (err) {
@@ -149,7 +175,7 @@ function ConsumptionPageInner() {
         <h1 className="text-2xl font-semibold text-slate-900">Use consumable stock</h1>
         <p className="mt-1 text-sm text-slate-500">
           Records feed and other consumable usage, reduces inventory, and posts a <strong>Feed</strong> expense to the day
-          book (at average cost). Shown on Expenses and in profit reports.
+          book (using cost per unit). Shown on Expenses and in profit reports.
         </p>
       </div>
 
@@ -188,9 +214,28 @@ function ConsumptionPageInner() {
             name="consumptionQuantity"
             className="w-full px-3 py-2 border rounded-md"
             value={qtyStr}
-            onChange={(e) => setQtyStr(e.target.value.replace(/[^\d.]/g, ""))}
+            onChange={(e) => setQtyStr(normalizeDecimalInput(e.target.value))}
             inputMode="decimal"
           />
+        </div>
+        <div>
+          <label htmlFor="consumption-unit-cost" className="block text-sm font-medium mb-1">
+            Cost (per unit)
+          </label>
+          <input
+            id="consumption-unit-cost"
+            name="consumptionUnitCost"
+            className="w-full px-3 py-2 border rounded-md"
+            value={unitCostStr}
+            onChange={(e) => setUnitCostStr(normalizeDecimalInput(e.target.value, 2))}
+            inputMode="decimal"
+            placeholder="Defaults to average cost"
+          />
+          {estimatedTotal != null ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Total expense: Rs. {estimatedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </p>
+          ) : null}
         </div>
         <div>
           <label htmlFor="consumption-category" className="block text-sm font-medium mb-1">
