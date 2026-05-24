@@ -4,13 +4,14 @@ import { Users, UserPlus, Trash2, ShieldPlus, X, Eye, EyeOff } from "lucide-reac
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type Role } from "@/lib/db";
-import { sha256Base64 } from "@/lib/auth";
+import { getSession, sha256Base64 } from "@/lib/auth";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
 import { isPasswordPwned } from "@/lib/pwnedPasswords";
 import {
+  MobileCardActions,
   MobileCardHeader,
   MobileDataCard,
   PageRoot,
@@ -208,6 +209,36 @@ export default function UsersPage() {
     }
     setShowCreateRole(false);
     setRoleForm({ name: "", description: "", permissions: new Set<PermissionId>(DEFAULT_PERMISSIONS) });
+  };
+
+  const deleteUser = async (user: NonNullable<typeof users>[number]) => {
+    if (!user.id) return;
+    const session = getSession();
+    if (session?.userId === user.id) {
+      alert("You cannot delete your own account while signed in.");
+      return;
+    }
+    const ok = await requirePasswordConfirm({
+      title: "Delete user",
+      message: `Delete user "${user.username}"? This cannot be undone.`,
+    });
+    if (!ok) return;
+    if (user.uid) {
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "user.record",
+          entityId: user.uid,
+          op: "delete",
+          payload: { uid: user.uid },
+        })
+      );
+    }
+    try {
+      await deleteFarmCloudLogin(user.username);
+    } catch {
+      /* offline or Supabase not configured */
+    }
+    await db.users.delete(user.id);
   };
 
   const createUser = async (e: React.FormEvent) => {
@@ -613,55 +644,41 @@ export default function UsersPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden min-w-0">
           <ResponsiveTableShell
-            mobile={users.map((user) => (
-              <MobileDataCard key={user.id}>
-                <MobileCardHeader
-                  title={
-                    <span className="inline-flex items-center gap-2">
-                      <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold shrink-0">
-                        {user.username.charAt(0).toUpperCase()}
+            mobile={users.map((user) => {
+              const isSelf = getSession()?.userId === user.id;
+              return (
+                <MobileDataCard key={user.id}>
+                  <MobileCardHeader
+                    title={
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold shrink-0">
+                          {user.username.charAt(0).toUpperCase()}
+                        </span>
+                        {user.username}
                       </span>
-                      {user.username}
+                    }
+                  />
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                    <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                      {roleById.get(user.roleId)?.name ?? "role"}
                     </span>
-                  }
-                  trailing={
+                    <span>{user.phone || "No phone"}</span>
+                  </div>
+                  <MobileCardActions>
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!user.id) return;
-                        const ok = await requirePasswordConfirm({
-                          title: "Delete user",
-                          message: `Delete user "${user.username}"?`,
-                        });
-                        if (!ok) return;
-                        if (user.uid) {
-                          await db.outbox.add(
-                            makeSyncEvent({
-                              entityType: "user.record",
-                              entityId: user.uid,
-                              op: "delete",
-                              payload: { uid: user.uid },
-                            })
-                          );
-                        }
-                        await deleteFarmCloudLogin(user.username);
-                        await db.users.delete(user.id);
-                      }}
-                      className="text-alert-red hover:text-alert-red/80 p-1"
-                      aria-label={`Delete ${user.username}`}
+                      onClick={() => void deleteUser(user)}
+                      disabled={isSelf}
+                      title={isSelf ? "You cannot delete your own account" : `Delete ${user.username}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-rose-200 text-alert-red text-sm font-medium hover:bg-rose-50 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <Trash2 className="w-4 h-4" />
+                      Delete
                     </button>
-                  }
-                />
-                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                  <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
-                    {roleById.get(user.roleId)?.name ?? "role"}
-                  </span>
-                  <span>{user.phone || "No phone"}</span>
-                </div>
-              </MobileDataCard>
-            ))}
+                  </MobileCardActions>
+                </MobileDataCard>
+              );
+            })}
           >
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
@@ -673,52 +690,39 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-slate-900">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold shrink-0">
-                          {user.username.charAt(0).toUpperCase()}
+                {users.map((user) => {
+                  const isSelf = getSession()?.userId === user.id;
+                  return (
+                    <tr key={user.id}>
+                      <td className="px-4 lg:px-6 py-4 text-sm font-medium text-slate-900">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold shrink-0">
+                            {user.username.charAt(0).toUpperCase()}
+                          </div>
+                          {user.username}
                         </div>
-                        {user.username}
-                      </div>
-                    </td>
-                    <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">
-                      <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
-                        {roleById.get(user.roleId)?.name ?? "role"}
-                      </span>
-                    </td>
-                    <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">{user.phone || "-"}</td>
-                    <td className="px-4 lg:px-6 py-4 text-right text-sm font-medium">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!user.id) return;
-                          const ok = await requirePasswordConfirm({
-                            title: "Delete user",
-                            message: `Delete user "${user.username}"?`,
-                          });
-                          if (!ok) return;
-                          if (user.uid) {
-                            await db.outbox.add(
-                              makeSyncEvent({
-                                entityType: "user.record",
-                                entityId: user.uid,
-                                op: "delete",
-                                payload: { uid: user.uid },
-                              })
-                            );
-                          }
-                          await deleteFarmCloudLogin(user.username);
-                          await db.users.delete(user.id);
-                        }}
-                        className="text-alert-red hover:text-alert-red/80"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                          {roleById.get(user.roleId)?.name ?? "role"}
+                        </span>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">{user.phone || "-"}</td>
+                      <td className="px-4 lg:px-6 py-4 text-right text-sm font-medium">
+                        <button
+                          type="button"
+                          onClick={() => void deleteUser(user)}
+                          disabled={isSelf}
+                          title={isSelf ? "You cannot delete your own account" : `Delete ${user.username}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-rose-200 text-alert-red font-medium hover:bg-rose-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </ResponsiveTableShell>
