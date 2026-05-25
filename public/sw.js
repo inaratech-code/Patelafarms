@@ -1,11 +1,12 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_NAME = "patela-farms-pwa-v4";
+const CACHE_NAME = "patela-farms-pwa-v5";
 const OFFLINE_URL = "/offline";
+const OFFLINE_HTML = "/offline.html";
 const FARM_HEALTH_ALERT_SOUND = "/sounds/farm-health-alert.wav";
 const FARM_HEALTH_VIBRATE = [400, 120, 400, 120, 500, 120, 600];
 const PLAY_FARM_HEALTH_SOUND_MESSAGE = "pf.playFarmHealthSound";
 const BROADCAST_FARM_HEALTH_SOUND_MESSAGE = "pf.broadcastFarmHealthSound";
-const CORE_ASSETS = ["/", "/manifest.json", "/logo.png", OFFLINE_URL, FARM_HEALTH_ALERT_SOUND];
+const CORE_ASSETS = ["/", "/manifest.json", "/logo.png", OFFLINE_URL, OFFLINE_HTML, FARM_HEALTH_ALERT_SOUND];
 
 function isFarmHealthPayload(payload, url) {
   return (
@@ -162,7 +163,12 @@ self.addEventListener("fetch", (event) => {
           cache.put(req, fresh.clone());
           return fresh;
         } catch {
-          return (await caches.match(req)) || (await caches.match(OFFLINE_URL)) || (await caches.match("/"));
+          return (
+            (await caches.match(req)) ||
+            (await caches.match(OFFLINE_HTML)) ||
+            (await caches.match(OFFLINE_URL)) ||
+            (await caches.match("/"))
+          );
         }
       })(),
     );
