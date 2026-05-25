@@ -7,7 +7,6 @@ import { db } from "@/lib/db";
 import { localDayKey } from "@/lib/erp/metrics";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
 import { vaccineDateEnteredRecently } from "@/lib/farmHealth";
-import { formatDualDate } from "@/lib/nepaliDate";
 
 function DoseListItem(props: {
   title: string;
@@ -94,7 +93,7 @@ export function HealthSnapshot() {
                   key={r.id ?? r.uid}
                   title={title}
                   batch={batch}
-                  date={formatDualDate(r.reminderDate, r.reminderDateBs)}
+                  date={r.reminderDate}
                   tone={live === "due_today" ? "due_today" : "upcoming"}
                 />
               ))
@@ -112,7 +111,7 @@ export function HealthSnapshot() {
                   key={r.id ?? r.uid}
                   title={title}
                   batch={batch}
-                  date={formatDualDate(r.reminderDate, r.reminderDateBs)}
+                  date={r.reminderDate}
                   datePrefix="Was due "
                   tone="overdue"
                 />
@@ -135,9 +134,7 @@ export function HealthSnapshot() {
                   className="rounded-lg sm:rounded-full border border-amber-200 bg-amber-50 px-3 py-2 sm:py-1 text-xs font-medium text-amber-900 break-words max-w-full"
                 >
                   {v.name}
-                  {v.purchaseDate
-                    ? ` · entered ${formatDualDate(v.purchaseDate, v.purchaseDateBs)}`
-                    : ""}
+                  {v.purchaseDate ? ` · entered ${v.purchaseDate}` : ""}
                 </li>
               ))
             )}

@@ -1,12 +1,16 @@
 import { db, type DayBookEntry, type LedgerAccount, type Payment } from "@/lib/db";
 import { addLedgerEntry } from "@/lib/ledger";
 import { getOrCreateDefaultCashAccountId, type PaymentMethod } from "@/lib/accounts";
-import { datePairFromAdYmd, timePairFromAdYmd } from "@/lib/nepaliDate";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 
 export type PartyType = LedgerAccount["type"];
 export type PaymentDirection = Payment["direction"];
+
+function toIsoFromDateOnly(dateYYYYMMDD: string) {
+  // stable midday to avoid timezone edge cases
+  return new Date(`${dateYYYYMMDD}T12:00:00`).toISOString();
+}
 
 export async function postPayment(params: {
   partyAccountId: number;
@@ -21,8 +25,7 @@ export async function postPayment(params: {
   const amount = Number(params.amount);
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Amount must be greater than 0");
 
-  const { date, dateBs } = datePairFromAdYmd(params.dateYYYYMMDD);
-  const { time, timeBs } = timePairFromAdYmd(params.dateYYYYMMDD);
+  const date = toIsoFromDateOnly(params.dateYYYYMMDD);
   const note = params.note?.trim();
 
   const party = await db.ledgerAccounts.get(params.partyAccountId);
@@ -35,8 +38,7 @@ export async function postPayment(params: {
 
   // Option A: Cash always affects Day Book cash-in-hand.
   const dayBook: Omit<DayBookEntry, "id"> = {
-    time,
-    timeBs,
+    time: date,
     type: isReceive ? "Income" : "Expense",
     category: "Other",
     amount,
@@ -71,7 +73,6 @@ export async function postPayment(params: {
       direction: params.direction,
       amount,
       date,
-      dateBs,
       note,
       method,
       accountId,

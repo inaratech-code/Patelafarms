@@ -8,7 +8,6 @@ import { db, type DoseReminderStatus } from "@/lib/db";
 import { refreshDoseReminderStatuses } from "@/lib/farmHealth";
 import { enqueueReminderOutbox } from "@/lib/farmHealthSync";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
-import { formatDualDate } from "@/lib/nepaliDate";
 
 type Filter = "all" | DoseReminderStatus;
 
@@ -88,7 +87,7 @@ export default function DoseSchedulePage() {
               <div className="min-w-0">
                 <div className="font-medium text-slate-900 break-words">{r.title ?? vaccine?.name ?? "Reminder"}</div>
                 <div className="text-sm text-slate-500 mt-0.5 break-words">
-                  Due {formatDualDate(r.reminderDate, r.reminderDateBs)}
+                  Due {r.reminderDate}
                   {usage ? ` · Batch ${usage.animalBatch}` : ""}
                   {r.cadence ? ` · ${r.cadence}` : ""}
                 </div>

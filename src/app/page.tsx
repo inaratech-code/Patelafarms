@@ -20,7 +20,6 @@ import {
 } from "@/lib/erp/metrics";
 import { dayBookEntryAffectsCash } from "@/lib/dayBookCash";
 import { isGeneralOperatingExpenseEntry } from "@/lib/erp/expenseEntries";
-import { formatAdDate } from "@/lib/nepaliDate";
 
 const Sparkline = dynamic(() => import("@/components/dashboard/_Sparkline").then((m) => m.Sparkline), { ssr: false });
 
@@ -117,7 +116,7 @@ export default function Dashboard() {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
       const dayKey = localDayKey(d);
-      const label = formatAdDate(localDayKey(d));
+      const label = d.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
       result.push({ dayKey, label, total: 0 });
     }
     const index = new Map(result.map((r, idx) => [r.dayKey, idx]));

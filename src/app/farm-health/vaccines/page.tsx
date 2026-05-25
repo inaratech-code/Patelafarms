@@ -9,9 +9,6 @@ import { db, type ReminderCadence, type Vaccine } from "@/lib/db";
 import { newUid } from "@/lib/uid";
 import { recordVaccineUsage } from "@/lib/farmHealth";
 import { enqueueVaccineOutbox } from "@/lib/farmHealthSync";
-import { DualDateField } from "@/components/ui/DualDateField";
-import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
-import { adYmdToBsYmd, datePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 const cadenceOptions: Array<{ id: ReminderCadence; label: string }> = [
   { id: "daily", label: "Daily reminder" },
@@ -42,7 +39,7 @@ function emptyVaccineForm(): VaccineAddForm {
     unit: "pcs",
     qtyStr: "",
     costStr: "",
-    dateEntered: todayAdYmd(),
+    dateEntered: new Date().toISOString().slice(0, 10),
     reDoseStr: "21",
     reDoseIntervalUnit: "days",
   };
@@ -70,7 +67,7 @@ export default function VaccinesPage() {
   const [usageVaccineId, setUsageVaccineId] = useState(0);
   const [usageQty, setUsageQty] = useState("1");
   const [usageBatch, setUsageBatch] = useState("");
-  const [usageDate, setUsageDate] = useState(() => todayAdYmd());
+  const [usageDate, setUsageDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [usageNextVal, setUsageNextVal] = useState("21");
   const [usageNextUnit, setUsageNextUnit] = useState<"days" | "months">("days");
   const [usageCadence, setUsageCadence] = useState<ReminderCadence>("daily");
@@ -87,7 +84,7 @@ export default function VaccinesPage() {
     setUsageNextUnit(v?.reDoseIntervalUnit ?? "days");
     setUsageQty("1");
     setUsageBatch("");
-    setUsageDate(todayAdYmd());
+    setUsageDate(new Date().toISOString().slice(0, 10));
     setUsageCadence("daily");
     setUsageNotes("");
     setUsageOpen(true);
@@ -113,7 +110,6 @@ export default function VaccinesPage() {
         qtyAvailable,
         costPrice,
         purchaseDate: form.dateEntered?.trim() || undefined,
-        purchaseDateBs: form.dateEntered?.trim() ? adYmdToBsYmd(form.dateEntered.trim()) : undefined,
         reDoseIntervalValue,
         reDoseIntervalUnit: form.reDoseIntervalUnit,
       };
@@ -133,7 +129,7 @@ export default function VaccinesPage() {
     if (!usageBatch.trim()) return alert("Animal batch is required.");
     const nextV = Number(usageNextVal);
     const hasNext = Number.isFinite(nextV) && nextV > 0;
-    const { date: iso } = datePairFromAdYmd(usageDate);
+    const iso = new Date(`${usageDate}T12:00:00`).toISOString();
     setSaving(true);
     try {
       await recordVaccineUsage({
@@ -241,9 +237,11 @@ export default function VaccinesPage() {
               </div>
               <div className="sm:col-span-2">
                 <label className="block font-medium text-slate-700 mb-1">Date entered</label>
-                <DualDateField
+                <input
+                  type="date"
+                  className="w-full px-3 py-2 border rounded-md"
                   value={form.dateEntered}
-                  onChange={(adYmd) => setForm({ ...form, dateEntered: adYmd })}
+                  onChange={(e) => setForm({ ...form, dateEntered: e.target.value })}
                 />
               </div>
               <div>
@@ -314,7 +312,13 @@ export default function VaccinesPage() {
               </div>
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Dose date</label>
-                <DualDateField value={usageDate} onChange={setUsageDate} required />
+                <input
+                  type="date"
+                  required
+                  className="w-full px-3 py-2 border rounded-md"
+                  value={usageDate}
+                  onChange={(e) => setUsageDate(e.target.value)}
+                />
               </div>
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Next dose after (optional)</label>
@@ -413,13 +417,7 @@ export default function VaccinesPage() {
                   </div>
                   <div className="col-span-2">
                     <dt className="text-xs text-slate-500">Date entered</dt>
-                    <dd className="text-slate-700">
-                      {v.purchaseDate ? (
-                        <DualDateDisplay iso={v.purchaseDate} dateBs={v.purchaseDateBs} layout="inline" />
-                      ) : (
-                        "—"
-                      )}
-                    </dd>
+                    <dd className="text-slate-700">{v.purchaseDate || "—"}</dd>
                   </div>
                 </dl>
               </div>
@@ -456,13 +454,7 @@ export default function VaccinesPage() {
                   <td className="px-4 py-2 text-right tabular-nums">{v.qtyAvailable}</td>
                   <td className="px-4 py-2 text-slate-600">{v.unit}</td>
                   <td className="px-4 py-2 text-right tabular-nums">Rs. {Number(v.costPrice ?? 0).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-slate-600">
-                    {v.purchaseDate ? (
-                      <DualDateDisplay iso={v.purchaseDate} dateBs={v.purchaseDateBs} layout="inline" />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
+                  <td className="px-4 py-2 text-slate-600">{v.purchaseDate || "—"}</td>
                   <td className="px-4 py-2 text-right">
                     <button
                       type="button"

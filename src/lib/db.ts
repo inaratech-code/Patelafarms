@@ -1,5 +1,4 @@
 import Dexie, { type EntityTable } from 'dexie';
-import { bsYmdFromStored } from '@/lib/nepaliDate';
 
 /** ERP catalog + stock row (single-table item master). */
 export type ItemTypeErp = 'sellable' | 'consumable' | 'equipment';
@@ -31,8 +30,6 @@ export interface StockMovement {
   type: 'IN' | 'OUT';
   reason: 'Harvest' | 'Purchase' | 'Sale' | 'Usage' | 'Damage' | 'Loss';
   date: string;
-  /** Bikram Sambat YYYY-MM-DD parallel to `date`. */
-  dateBs?: string;
 }
 
 export type InventoryLossType = "Dead" | "Damaged" | "Spoiled" | "Missing" | "Theft" | "Wastage";
@@ -47,7 +44,6 @@ export interface InventoryLoss {
   estimatedCost: number;
   reason?: string;
   date: string; // ISO
-  dateBs?: string;
   createdBy?: string;
 }
 
@@ -63,7 +59,6 @@ export interface ConsumptionLog {
   category: ConsumptionCategory;
   notes?: string;
   date: string;
-  dateBs?: string;
 }
 
 export type PaymentStatusErp = 'paid' | 'partial' | 'due';
@@ -81,7 +76,6 @@ export interface Sale {
   customerName?: string;
   paymentType: 'Cash' | 'Credit';
   date: string;
-  dateBs?: string;
   customerId?: number;
   paidAmount?: number;
   dueAmount?: number;
@@ -97,7 +91,6 @@ export interface Purchase {
   quantity: number;
   totalCost: number;
   date: string;
-  dateBs?: string;
   paidAmount?: number;
   dueAmount?: number;
   paymentStatus?: PaymentStatusErp;
@@ -111,8 +104,6 @@ export interface DayBookEntry {
   id?: number;
   uid?: string;
   time: string; // ISO String
-  /** Bikram Sambat YYYY-MM-DD for the journal day. */
-  timeBs?: string;
   description: string;
   amount: number;
   type: 'Income' | 'Expense';
@@ -145,9 +136,7 @@ export interface Vaccine {
   qtyAvailable: number;
   costPrice: number;
   purchaseDate?: string; // ISO date
-  purchaseDateBs?: string;
   expiryDate?: string; // ISO date
-  expiryDateBs?: string;
   reDoseIntervalValue?: number;
   reDoseIntervalUnit?: 'days' | 'months';
 }
@@ -159,9 +148,7 @@ export interface VaccineUsage {
   qtyUsed: number;
   animalBatch: string;
   doseDate: string; // ISO
-  doseDateBs?: string;
   nextDoseDate?: string; // ISO date YYYY-MM-DD
-  nextDoseDateBs?: string;
   nextIntervalValue?: number;
   nextIntervalUnit?: 'days' | 'months';
   notes?: string;
@@ -177,8 +164,7 @@ export interface DoseReminder {
   id?: number;
   uid?: string;
   vaccineUsageId: number;
-  reminderDate: string; // YYYY-MM-DD AD
-  reminderDateBs?: string;
+  reminderDate: string; // YYYY-MM-DD
   status: DoseReminderStatus;
   cadence: ReminderCadence;
   title?: string;
@@ -189,7 +175,6 @@ export interface HealthLog {
   id?: number;
   uid?: string;
   date: string; // ISO
-  dateBs?: string;
   animalBatch: string;
   summary: string;
   notes?: string;
@@ -208,7 +193,6 @@ export interface LedgerEntry {
   uid?: string;
   accountId: number;
   date: string;
-  dateBs?: string;
   description: string;
   debit: number;
   credit: number;
@@ -223,7 +207,6 @@ export interface Payment {
   direction: 'Receive' | 'Pay';
   amount: number;
   date: string; // ISO
-  dateBs?: string;
   note?: string;
   method: 'Cash' | 'QR' | 'BankTransfer';
   accountId?: number; // FinancialAccount.id
@@ -765,74 +748,6 @@ export class PatelaFarmDatabase extends Dexie {
       })
       .upgrade(async () => {
         /* noop: keeps version chain monotonic for installs that already reached v17 */
-      });
-
-    this.version(18)
-      .stores({
-        inventory: '++id, uid, name, quantity, itemType, active',
-        inventoryLosses: '++id, uid, itemId, lossType, date',
-        stockMovement: '++id, uid, itemId, type, reason, date',
-        sales: '++id, uid, itemId, paymentType, date, paymentStatus',
-        purchases: '++id, uid, supplierName, itemId, date, paymentStatus',
-        dayBook: '++id, uid, time, type, category, accountId, affectsCash',
-        ledgerAccounts: '++id, uid, name, type',
-        ledgerEntries: '++id, uid, accountId, date',
-        payments: '++id, uid, partyAccountId, direction, date, accountId',
-        financialAccounts: '++id, uid, name, type',
-        roles: '++id, uid, name',
-        users: '++id, uid, username, roleId',
-        outbox: 'id, createdAt, pushedAt, entityType, entityId',
-        consumptionLogs: '++id, uid, itemId, category, date',
-        vaccines: '++id, uid, name, animalType, expiryDate',
-        vaccineUsages: '++id, uid, vaccineId, doseDate',
-        doseReminders: '++id, uid, reminderDate, status, vaccineUsageId',
-        healthLogs: '++id, uid, date, animalBatch',
-      })
-      .upgrade(async (tx) => {
-        const setBs = (row: Record<string, unknown>, isoKey: string, bsKey: string) => {
-          const iso = row[isoKey];
-          if (typeof iso !== "string" || !iso) return;
-          const bs = bsYmdFromStored(iso, row[bsKey] as string | undefined);
-          if (bs) row[bsKey] = bs;
-        };
-
-        const dateTables = [
-          "stockMovement",
-          "sales",
-          "purchases",
-          "inventoryLosses",
-          "consumptionLogs",
-          "ledgerEntries",
-          "payments",
-          "healthLogs",
-        ] as const;
-
-        for (const table of dateTables) {
-          await tx.table(table).toCollection().modify((row: Record<string, unknown>) => {
-            setBs(row, "date", "dateBs");
-          });
-        }
-
-        await tx.table("dayBook").toCollection().modify((row: Record<string, unknown>) => {
-          setBs(row, "time", "timeBs");
-        });
-
-        await tx.table("vaccines").toCollection().modify((row: Record<string, unknown>) => {
-          setBs(row, "purchaseDate", "purchaseDateBs");
-          setBs(row, "expiryDate", "expiryDateBs");
-        });
-
-        await tx.table("vaccineUsages").toCollection().modify((row: Record<string, unknown>) => {
-          setBs(row, "doseDate", "doseDateBs");
-          setBs(row, "nextDoseDate", "nextDoseDateBs");
-        });
-
-        await tx.table("doseReminders").toCollection().modify((row: Record<string, unknown>) => {
-          const ad = row.reminderDate;
-          if (typeof ad !== "string" || !ad) return;
-          const bs = bsYmdFromStored(ad, row.reminderDateBs as string | undefined);
-          if (bs) row.reminderDateBs = bs;
-        });
       });
 
     this.inventory = this.table('inventory');

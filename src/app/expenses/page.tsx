@@ -19,9 +19,6 @@ import {
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
-import { DualDateField } from "@/components/ui/DualDateField";
-import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
-import { timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -34,7 +31,7 @@ export default function ExpensesPage() {
   const [showGate, setShowGate] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
-    date: todayAdYmd(),
+    date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
     category: "Other",
     amount: "" as string,
     description: "",
@@ -66,7 +63,7 @@ export default function ExpensesPage() {
     const category = form.category.trim();
     if (!category) return alert("Category is required.");
 
-    const { time, timeBs } = timePairFromAdYmd(form.date);
+    const time = new Date(`${form.date}T12:00:00`).toISOString();
     const accountId = Number(form.accountId) || (await getOrCreateDefaultCashAccountId());
 
     try {
@@ -74,7 +71,6 @@ export default function ExpensesPage() {
       const entry = {
         uid: newUid(),
         time,
-        timeBs,
         type: "Expense" as const,
         category,
         amount,
@@ -128,7 +124,7 @@ export default function ExpensesPage() {
       rememberExpenseCategory(category);
       setShowForm(false);
       setForm({
-        date: todayAdYmd(),
+        date: new Date().toISOString().slice(0, 10),
         category: "Other",
         amount: "",
         description: "",
@@ -208,10 +204,12 @@ export default function ExpensesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Date</label>
-              <DualDateField
+              <input
                 required
+                type="date"
                 value={form.date}
-                onChange={(adYmd) => setForm({ ...form, date: adYmd })}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div>
@@ -310,7 +308,7 @@ export default function ExpensesPage() {
               <MobileDataCard key={e.id}>
                 <MobileCardHeader
                   title={expenseDisplayCategory(e)}
-                  subtitle={<DualDateDisplay iso={e.time} dateBs={e.timeBs} layout="inline" />}
+                  subtitle={new Date(e.time).toLocaleDateString()}
                   trailing={
                     <span className="text-sm font-semibold text-slate-900 tabular-nums">
                       Rs. {e.amount.toLocaleString()}
@@ -334,7 +332,7 @@ export default function ExpensesPage() {
                 {sorted.slice(0, 50).map((e) => (
                   <tr key={e.id}>
                     <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">
-                      <DualDateDisplay iso={e.time} dateBs={e.timeBs} layout="inline" />
+                      {new Date(e.time).toLocaleDateString()}
                     </td>
                     <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{expenseDisplayCategory(e)}</td>
                     <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{e.description}</td>

@@ -8,7 +8,6 @@ import { db } from "@/lib/db";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
 import { vaccineDateEnteredRecently, refreshDoseReminderStatuses } from "@/lib/farmHealth";
 import { localDayKey } from "@/lib/erp/metrics";
-import { formatDualDate } from "@/lib/nepaliDate";
 
 export default function AlertsPage() {
   const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
@@ -172,9 +171,7 @@ export default function AlertsPage() {
                     className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2 min-w-0"
                   >
                     <span className="font-medium text-rose-900 break-words min-w-0">{r.title ?? "Dose"}</span>
-                    <span className="text-rose-800 text-xs sm:text-sm shrink-0">
-                      {formatDualDate(r.reminderDate, r.reminderDateBs)}
-                    </span>
+                    <span className="text-rose-800 text-xs sm:text-sm shrink-0">{r.reminderDate}</span>
                   </div>
                 ))}
                 {doseAlerts.soon.map((r) => (
@@ -183,9 +180,7 @@ export default function AlertsPage() {
                     className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2 min-w-0"
                   >
                     <span className="font-medium text-orange-900 break-words min-w-0">{r.title ?? "Dose"}</span>
-                    <span className="text-orange-800 text-xs sm:text-sm shrink-0">
-                      {formatDualDate(r.reminderDate, r.reminderDateBs)}
-                    </span>
+                    <span className="text-orange-800 text-xs sm:text-sm shrink-0">{r.reminderDate}</span>
                   </div>
                 ))}
                 {doseAlerts.recentEntered.map((v) => (
@@ -194,9 +189,7 @@ export default function AlertsPage() {
                     className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 min-w-0"
                   >
                     <span className="font-medium text-amber-900 break-words min-w-0">{v.name}</span>
-                    <span className="text-amber-800 text-xs sm:text-sm shrink-0">
-                      entered {formatDualDate(v.purchaseDate, v.purchaseDateBs)}
-                    </span>
+                    <span className="text-amber-800 text-xs sm:text-sm shrink-0">entered {v.purchaseDate ?? "—"}</span>
                   </div>
                 ))}
               </>

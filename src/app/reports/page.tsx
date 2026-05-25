@@ -17,7 +17,6 @@ import {
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
-import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
 
 
 function dayKey(d: Date) {
@@ -212,7 +211,7 @@ export default function ReportsPage() {
               feedRecent.map((c) => (
                 <li key={c.id ?? c.uid} className="py-2 flex justify-between gap-2">
                   <span className="text-slate-700">
-                    <DualDateDisplay iso={c.date} dateBs={c.dateBs} layout="inline" /> — {c.itemName}{" "}
+                    {new Date(c.date).toLocaleDateString()} — {c.itemName}{" "}
                     <span className="text-slate-500">
                       ({c.quantity} · {c.category.replace(/_/g, " ")})
                     </span>
@@ -233,7 +232,7 @@ export default function ReportsPage() {
               mortality.map((l) => (
                 <li key={l.id ?? l.uid} className="py-2 flex justify-between gap-2">
                   <span className="text-slate-700">
-                    <DualDateDisplay iso={l.date} dateBs={l.dateBs} layout="inline" /> — {l.itemName}{" "}
+                    {new Date(l.date).toLocaleDateString()} — {l.itemName}{" "}
                     <span className="text-slate-500">
                       ({l.quantity} {l.unit})
                     </span>
