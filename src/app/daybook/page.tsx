@@ -16,6 +16,8 @@ import {
   FARM_HEALTH_EXPENSE_CATEGORY,
   LOSS_EXPENSE_CATEGORY,
 } from "@/lib/erp/expenseEntries";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { todayAdYmd } from "@/lib/nepaliDate";
 import {
   MobileCardDl,
   MobileCardHeader,
@@ -46,7 +48,7 @@ function formatMoney(amount: number): string {
 
 export default function DayBookPage() {
   const allEntries = useLiveQuery(() => db.dayBook.toArray()) || [];
-  const [selectedDate, setSelectedDate] = useState(() => localDayKey(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => todayAdYmd());
 
   const rows = useMemo(() => {
     return allEntries
@@ -92,13 +94,11 @@ export default function DayBookPage() {
           <label htmlFor="daybook-date" className="text-sm font-medium text-slate-600">
             Date
           </label>
-          <input
+          <DualDateField
             id="daybook-date"
-            name="daybookDate"
-            type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-2 border rounded-md bg-white"
+            onChange={setSelectedDate}
+            className="max-w-xs"
           />
         </div>
       </div>

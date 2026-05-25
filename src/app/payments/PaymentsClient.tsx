@@ -15,12 +15,15 @@ import {
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { todayAdYmd } from "@/lib/nepaliDate";
 
 type Direction = Payment["direction"];
 type PartyType = LedgerAccount["type"];
 
 function isoToday() {
-  return new Date().toISOString().slice(0, 10);
+  return todayAdYmd();
 }
 
 function computeBalance(entries: Array<{ accountId: number; debit: number; credit: number }>, accountId: number) {
@@ -274,14 +277,7 @@ export function PaymentsClient() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Date</label>
-              <input
-                required
-                type="date"
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-                className="w-full px-3 py-2 border rounded-md"
-              />
+              <DualDateField value={form.date} onChange={(ad) => setForm({ ...form, date: ad })} required />
             </div>
 
             <div className="sm:col-span-2 lg:col-span-4">
@@ -327,7 +323,12 @@ export function PaymentsClient() {
               <MobileDataCard key={r.payment.id}>
                 <MobileCardHeader
                   title={r.party?.name ?? "Unknown"}
-                  subtitle={`${new Date(r.payment.date).toLocaleDateString()} · ${r.payment.partyType} · ${r.payment.direction}`}
+                  subtitle={
+                    <>
+                      <DualDateDisplay iso={r.payment.date} dateBs={r.payment.dateBs} layout="inline" />
+                      {` · ${r.payment.partyType} · ${r.payment.direction}`}
+                    </>
+                  }
                   trailing={
                     <span className="text-sm font-semibold text-[#0f172a] tabular-nums">
                       Rs. {r.payment.amount.toLocaleString()}
@@ -362,7 +363,7 @@ export function PaymentsClient() {
                 {paymentHistory.slice(0, 50).map((r) => (
                   <tr key={r.payment.id}>
                     <td className="px-4 lg:px-6 py-4 text-sm text-[#64748b]">
-                      {new Date(r.payment.date).toLocaleDateString()}
+                      <DualDateDisplay iso={r.payment.date} dateBs={r.payment.dateBs} />
                     </td>
                     <td className="px-4 lg:px-6 py-4 text-sm font-semibold text-[#0f172a]">{r.party?.name ?? "Unknown"}</td>
                     <td className="px-4 lg:px-6 py-4 text-sm text-[#64748b]">{r.payment.partyType}</td>

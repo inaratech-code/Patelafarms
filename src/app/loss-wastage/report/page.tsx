@@ -9,6 +9,7 @@ import {
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -168,7 +169,12 @@ export default function LossReportPage() {
                 <MobileDataCard key={l.id}>
                   <MobileCardHeader
                     title={inventory.find((i) => i.id === l.itemId)?.name ?? "Unknown"}
-                    subtitle={`${new Date(l.date).toLocaleDateString()} · ${l.lossType}`}
+                    subtitle={
+                      <>
+                        <DualDateDisplay iso={l.date} dateBs={l.dateBs} layout="inline" />
+                        {` · ${l.lossType}`}
+                      </>
+                    }
                     trailing={
                       <span className="text-sm font-semibold text-slate-900 tabular-nums">
                         Rs. {l.estimatedCost.toLocaleString()}
@@ -194,7 +200,9 @@ export default function LossReportPage() {
                   .slice(0, 80)
                   .map((l) => (
                     <tr key={l.id}>
-                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">{new Date(l.date).toLocaleDateString()}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">
+                        <DualDateDisplay iso={l.date} dateBs={l.dateBs} />
+                      </td>
                       <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">
                         {inventory.find((i) => i.id === l.itemId)?.name ?? "Unknown"}
                       </td>

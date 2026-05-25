@@ -2,36 +2,8 @@
 
 import { motion } from "framer-motion";
 import { CalendarDays, CloudSun, Wifi, WifiOff } from "lucide-react";
-import NepaliDate from "nepali-date-converter";
 import { useEffect, useMemo, useState } from "react";
-
-function formatLongDate(d: Date) {
-  return d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "2-digit" });
-}
-
-const NEPALI_MONTHS_EN = [
-  "Baisakh",
-  "Jestha",
-  "Ashadh",
-  "Shrawan",
-  "Bhadra",
-  "Ashwin",
-  "Kartik",
-  "Mangsir",
-  "Poush",
-  "Magh",
-  "Falgun",
-  "Chaitra",
-] as const;
-
-function formatNepaliDateBS(d: Date) {
-  const bs = new NepaliDate(d);
-  const y = bs.getYear();
-  const m = bs.getMonth(); // 0-based
-  const day = bs.getDate();
-  const monthLabel = NEPALI_MONTHS_EN[m] ?? `M${m + 1}`;
-  return `${y} ${monthLabel} ${String(day).padStart(2, "0")}`;
-}
+import { formatAdDate, formatBsDate, todayAdYmd } from "@/lib/nepaliDate";
 
 function weatherLabelFromCode(code: number) {
   // Open-Meteo weather codes: https://open-meteo.com/en/docs
@@ -71,6 +43,8 @@ export function HeroSection(props: { isOnline: boolean }) {
     const hour = now.getHours();
     return hour < 12 ? "Good Morning ☀" : hour < 18 ? "Good Afternoon 🌤" : "Good Evening 🌙";
   }, [now]);
+
+  const todayAd = useMemo(() => (now ? todayAdYmd() : ""), [now]);
 
   const [weather, setWeather] = useState<{ tempC: number; code: number; fetchedAt: number } | null>(null);
   const weatherText = useMemo(() => {
@@ -185,10 +159,10 @@ export function HeroSection(props: { isOnline: boolean }) {
               Today
             </div>
             <div className="mt-1 text-[11px] sm:text-xs font-semibold text-[#0f172a] leading-tight" suppressHydrationWarning>
-              {now ? formatLongDate(now) : "--"}
+              {todayAd ? formatAdDate(todayAd) : "--"}
             </div>
             <div className="mt-0.5 text-[10px] font-medium text-[#64748b] leading-tight" suppressHydrationWarning>
-              {now ? `${formatNepaliDateBS(now)} (BS)` : "--"}
+              {todayAd ? `${formatBsDate(todayAd)} BS` : "--"}
             </div>
           </div>
 
@@ -225,4 +199,3 @@ export function HeroSection(props: { isOnline: boolean }) {
     </motion.section>
   );
 }
-

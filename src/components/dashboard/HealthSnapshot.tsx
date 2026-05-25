@@ -7,11 +7,13 @@ import { db } from "@/lib/db";
 import { localDayKey } from "@/lib/erp/metrics";
 import { doseReminderEffectiveStatus } from "@/lib/notifications";
 import { vaccineDateEnteredRecently } from "@/lib/farmHealth";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
 
 function DoseListItem(props: {
   title: string;
   batch: string;
-  date: string;
+  iso: string;
+  dateBs?: string;
   datePrefix?: string;
   tone: "upcoming" | "due_today" | "overdue";
 }) {
@@ -34,7 +36,7 @@ function DoseListItem(props: {
       </div>
       <div className={`text-xs mt-0.5 ${metaCls}`}>
         {props.datePrefix ?? ""}
-        {props.date}
+        <DualDateDisplay iso={props.iso} dateBs={props.dateBs} layout="inline" />
       </div>
     </li>
   );
@@ -93,7 +95,8 @@ export function HealthSnapshot() {
                   key={r.id ?? r.uid}
                   title={title}
                   batch={batch}
-                  date={r.reminderDate}
+                  iso={r.reminderDate}
+                  dateBs={r.reminderDateBs}
                   tone={live === "due_today" ? "due_today" : "upcoming"}
                 />
               ))
@@ -111,7 +114,8 @@ export function HealthSnapshot() {
                   key={r.id ?? r.uid}
                   title={title}
                   batch={batch}
-                  date={r.reminderDate}
+                  iso={r.reminderDate}
+                  dateBs={r.reminderDateBs}
                   datePrefix="Was due "
                   tone="overdue"
                 />
@@ -134,7 +138,12 @@ export function HealthSnapshot() {
                   className="rounded-lg sm:rounded-full border border-amber-200 bg-amber-50 px-3 py-2 sm:py-1 text-xs font-medium text-amber-900 break-words max-w-full"
                 >
                   {v.name}
-                  {v.purchaseDate ? ` · entered ${v.purchaseDate}` : ""}
+                  {v.purchaseDate ? (
+                    <>
+                      {" · entered "}
+                      <DualDateDisplay iso={v.purchaseDate} dateBs={v.purchaseDateBs} layout="inline" />
+                    </>
+                  ) : null}
                 </li>
               ))
             )}

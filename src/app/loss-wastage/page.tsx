@@ -16,6 +16,9 @@ import {
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { datePairFromAdYmd, timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 const lossTypes: Array<{ id: InventoryLossType; label: string; badge: string }> = [
   { id: "Dead", label: "Dead", badge: "bg-rose-500/10 text-rose-700" },
@@ -53,7 +56,7 @@ export default function LossWastagePage() {
     unit: "",
     estimatedCost: "",
     reason: "",
-    date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+    date: todayAdYmd(),
   });
 
   const sorted = useMemo(() => {
@@ -91,7 +94,8 @@ export default function LossWastagePage() {
     const cost = Number(form.estimatedCost);
     if (!Number.isFinite(cost) || cost <= 0) return alert("Estimated cost must be greater than 0.");
 
-    const date = new Date(`${form.date}T12:00:00`).toISOString();
+    const { date, dateBs } = datePairFromAdYmd(form.date);
+    const { time, timeBs } = timePairFromAdYmd(form.date);
     const lossUid = newUid();
     const movementUid = newUid();
     const dayUid = newUid();
@@ -113,6 +117,7 @@ export default function LossWastagePage() {
           type: "OUT",
           reason: "Loss",
           date,
+          dateBs,
         });
 
         // 3) Loss record
@@ -125,6 +130,7 @@ export default function LossWastagePage() {
           estimatedCost: cost,
           reason: reasonText || undefined,
           date,
+          dateBs,
           createdBy: undefined,
         };
         const lossId = await db.inventoryLosses.add(lossRow);
@@ -134,7 +140,8 @@ export default function LossWastagePage() {
         const acct = await db.financialAccounts.get(accountId);
         const day = {
           uid: dayUid,
-          time: date,
+          time,
+          timeBs,
           type: "Expense" as const,
           category: LOSS_EXPENSE_CATEGORY,
           amount: cost,
@@ -184,7 +191,7 @@ export default function LossWastagePage() {
         unit: "",
         estimatedCost: "",
         reason: "",
-        date: new Date().toISOString().slice(0, 10),
+        date: todayAdYmd(),
       });
     } catch (err) {
       console.error(err);
@@ -249,13 +256,10 @@ export default function LossWastagePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Date</label>
-              <input
-                required
-                type="date"
+              <DualDateField
                 value={form.date}
-                onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-md"
+                onChange={(ad) => setForm((p) => ({ ...p, date: ad }))}
+                required
               />
             </div>
 
@@ -338,7 +342,7 @@ export default function LossWastagePage() {
                 <MobileDataCard key={l.id}>
                   <MobileCardHeader
                     title={item?.name ?? "Unknown"}
-                    subtitle={new Date(l.date).toLocaleDateString()}
+                    subtitle={<DualDateDisplay iso={l.date} dateBs={l.dateBs} layout="inline" />}
                     trailing={
                       <span className="text-sm font-semibold text-slate-900 tabular-nums">
                         Rs. {l.estimatedCost.toLocaleString()}
@@ -373,7 +377,9 @@ export default function LossWastagePage() {
                   const tone = lossTypes.find((t) => t.id === l.lossType)?.badge ?? "bg-slate-500/10 text-slate-700";
                   return (
                     <tr key={l.id}>
-                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">{new Date(l.date).toLocaleDateString()}</td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-slate-600">
+                        <DualDateDisplay iso={l.date} dateBs={l.dateBs} />
+                      </td>
                       <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{item?.name ?? "Unknown"}</td>
                       <td className="px-4 lg:px-6 py-4 text-sm">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${tone}`}>

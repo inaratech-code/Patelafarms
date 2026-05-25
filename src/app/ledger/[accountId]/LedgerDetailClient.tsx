@@ -16,15 +16,13 @@ import {
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { formatDualDate, todayAdYmd } from "@/lib/nepaliDate";
 
 /** Line-item debit/credit: always show the number (including 0) so both columns stay visible. */
 function formatLedgerSide(n: number) {
   return n.toLocaleString();
-}
-
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString();
 }
 
 function asDrCr(amount: number) {
@@ -33,7 +31,7 @@ function asDrCr(amount: number) {
 }
 
 function isoToday() {
-  return new Date().toISOString().slice(0, 10);
+  return todayAdYmd();
 }
 
 type EntryKind = "debit" | "credit";
@@ -121,8 +119,8 @@ export function LedgerDetailClient(props: { accountId: number }) {
   const latestBalance = rows.length ? rows[rows.length - 1].closing : 0;
   const timePeriod = useMemo(() => {
     if (!rows.length) return "";
-    const from = formatDate(rows[0].date);
-    const to = formatDate(rows[rows.length - 1].date);
+    const from = formatDualDate(rows[0].date, rows[0].dateBs);
+    const to = formatDualDate(rows[rows.length - 1].date, rows[rows.length - 1].dateBs);
     return from === to ? from : `${from} to ${to}`;
   }, [rows]);
 
@@ -217,13 +215,10 @@ export function LedgerDetailClient(props: { accountId: number }) {
           className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
         >
           <div>
-            <label className="block text-sm font-medium mb-1">Date</label>
-            <input
-              required
-              type="date"
+            <DualDateField
               value={entryForm.date}
-              onChange={(e) => setEntryForm({ ...entryForm, date: e.target.value })}
-              className="w-full px-3 py-2 border rounded-md"
+              onChange={(ad) => setEntryForm({ ...entryForm, date: ad })}
+              required
             />
             <p className="mt-1 text-xs text-slate-500">You can pick earlier dates for past transactions.</p>
           </div>
@@ -326,7 +321,7 @@ export function LedgerDetailClient(props: { accountId: number }) {
               <MobileDataCard key={e.id}>
                 <MobileCardHeader
                   title={e.description}
-                  subtitle={formatDate(e.date)}
+                  subtitle={<DualDateDisplay iso={e.date} dateBs={e.dateBs} layout="inline" />}
                   trailing={
                     <span className="text-sm font-bold text-slate-900 tabular-nums">
                       {e.closing === 0 ? (
@@ -364,7 +359,9 @@ export function LedgerDetailClient(props: { accountId: number }) {
               <tbody>
                 {rows.map((e) => (
                   <tr key={e.id} className="h-10">
-                    <td className="border border-slate-700 px-3 py-2 text-sm whitespace-nowrap">{formatDate(e.date)}</td>
+                    <td className="border border-slate-700 px-3 py-2 text-sm whitespace-nowrap">
+                      <DualDateDisplay iso={e.date} dateBs={e.dateBs} />
+                    </td>
                     <td className="border border-slate-700 px-3 py-2 text-sm">{e.description}</td>
                     <td className="border border-slate-700 px-3 py-2 text-sm text-right whitespace-nowrap">
                       {e.opening ? Math.abs(e.opening).toLocaleString() : "-"}{" "}

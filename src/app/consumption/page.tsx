@@ -13,6 +13,8 @@ import { assertStockAvailable, isConsumable, resolveItemType } from "@/lib/erp/i
 import { postCashLedgerExpense } from "@/lib/ledger";
 import { normalizeDecimalInput, parseDecimalInput } from "@/lib/decimalInput";
 import { ArrowLeft } from "lucide-react";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { datePairFromAdYmd, timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 const categories: Array<{ id: ConsumptionCategory; label: string }> = [
   { id: "feed_used", label: "Feed used" },
@@ -41,7 +43,7 @@ function ConsumptionPageInner() {
   const [unitCostStr, setUnitCostStr] = useState("");
   const [category, setCategory] = useState<ConsumptionCategory>("feed_used");
   const [notes, setNotes] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayAdYmd());
   const [saving, setSaving] = useState(false);
 
   const selected = inventory.find((i) => i.id === itemId);
@@ -85,7 +87,8 @@ function ConsumptionPageInner() {
     }
 
     const cost = qty * unitCost;
-    const iso = new Date(`${date}T12:00:00`).toISOString();
+    const { date: iso, dateBs } = datePairFromAdYmd(date);
+    const { time, timeBs } = timePairFromAdYmd(date);
     const logUid = newUid();
     const movUid = newUid();
     const dayUid = newUid();
@@ -101,6 +104,7 @@ function ConsumptionPageInner() {
           type: "OUT",
           reason: "Usage",
           date: iso,
+          dateBs,
         });
 
         const log = {
@@ -111,6 +115,7 @@ function ConsumptionPageInner() {
           category,
           notes: notes.trim() || undefined,
           date: iso,
+          dateBs,
         };
         await db.consumptionLogs.add(log);
 
@@ -119,7 +124,8 @@ function ConsumptionPageInner() {
         const desc = `Consumption (${category}): ${qty} ${selected.unit} ${selected.name}`;
         const day = {
           uid: dayUid,
-          time: iso,
+          time,
+          timeBs,
           type: "Expense" as const,
           category: FEED_EXPENSE_CATEGORY,
           amount: cost,
@@ -263,17 +269,7 @@ function ConsumptionPageInner() {
           </select>
         </div>
         <div>
-          <label htmlFor="consumption-date" className="block text-sm font-medium mb-1">
-            Date
-          </label>
-          <input
-            id="consumption-date"
-            name="consumptionDate"
-            type="date"
-            className="w-full px-3 py-2 border rounded-md"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          <DualDateField value={date} onChange={setDate} required />
         </div>
         <div>
           <label htmlFor="consumption-notes" className="block text-sm font-medium mb-1">
