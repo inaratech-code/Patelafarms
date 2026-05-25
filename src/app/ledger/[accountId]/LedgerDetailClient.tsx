@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { ArrowLeft } from "lucide-react";
-import { useMemo } from "react";
+import { ArrowLeft, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  backfillSupplierLedgerFromPurchases,
+  postLedgerEntryWithSync,
+} from "@/lib/ledger";
 import {
   MobileCardDl,
   MobileCardHeader,
@@ -28,19 +32,70 @@ function asDrCr(amount: number) {
   return amount >= 0 ? "Dr" : "Cr";
 }
 
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+type EntryKind = "debit" | "credit";
+
+function defaultEntryKind(accountType?: string): EntryKind {
+  if (accountType === "Supplier") return "credit";
+  return "debit";
+}
+
+function entryKindLabel(accountType: string | undefined, kind: EntryKind) {
+  if (accountType === "Supplier") {
+    return kind === "credit" ? "Payable (purchase / amount owed)" : "Payment (reduces payable)";
+  }
+  if (accountType === "Worker") {
+    return kind === "credit" ? "Paid to worker" : "Amount owed to worker";
+  }
+  return kind === "debit" ? "Receivable (amount owed to you)" : "Received (reduces receivable)";
+}
+
 export function LedgerDetailClient(props: { accountId: number }) {
   const accountId = props.accountId;
+  const [showForm, setShowForm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const [entryForm, setEntryForm] = useState({
+    date: isoToday(),
+    description: "",
+    kind: "credit" as EntryKind,
+    amount: "",
+  });
 
   const account = useLiveQuery(
     () => (Number.isFinite(accountId) ? db.ledgerAccounts.get(accountId) : undefined),
     [accountId]
   );
 
+  useEffect(() => {
+    if (!account?.type) return;
+    queueMicrotask(() => {
+      setEntryForm((prev) => ({ ...prev, kind: defaultEntryKind(account.type) }));
+    });
+  }, [account?.type]);
+
   const entries =
     useLiveQuery(
       () => (Number.isFinite(accountId) ? db.ledgerEntries.where("accountId").equals(accountId).toArray() : []),
       [accountId]
     ) || [];
+
+  const purchases = useLiveQuery(() => db.purchases.toArray()) || [];
+
+  const duePurchaseDaysForAccount = useMemo(() => {
+    if (!account?.name || account.type !== "Supplier") return 0;
+    const name = account.name.trim();
+    const days = new Set<string>();
+    for (const p of purchases) {
+      if (p.supplierName?.trim() !== name) continue;
+      if (p.paymentStatus !== "due" && (p.dueAmount ?? 0) <= 0) continue;
+      days.add(p.date.slice(0, 10));
+    }
+    return days.size;
+  }, [account?.name, account?.type, purchases]);
 
   const rows = useMemo(() => {
     const sorted = entries.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -77,6 +132,56 @@ export function LedgerDetailClient(props: { accountId: number }) {
     );
   }
 
+  const handleAddEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = Number(entryForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Enter an amount greater than 0.");
+      return;
+    }
+    const description = entryForm.description.trim();
+    if (!description) {
+      alert("Description is required.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await postLedgerEntryWithSync({
+        accountId,
+        date: entryForm.date,
+        description,
+        debit: entryForm.kind === "debit" ? amount : 0,
+        credit: entryForm.kind === "credit" ? amount : 0,
+      });
+      setShowForm(false);
+      setEntryForm({
+        date: isoToday(),
+        description: "",
+        kind: defaultEntryKind(account?.type),
+        amount: "",
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not save entry.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleBackfill = async () => {
+    setIsBackfilling(true);
+    try {
+      const { created } = await backfillSupplierLedgerFromPurchases(accountId);
+      if (created === 0) {
+        alert("No credit purchases found to import for this supplier.");
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Import failed.");
+    } finally {
+      setIsBackfilling(false);
+    }
+  };
+
   return (
     <PageRoot>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -87,8 +192,86 @@ export function LedgerDetailClient(props: { accountId: number }) {
           <ArrowLeft className="w-4 h-4" />
           Back
         </Link>
-        <div className="text-sm text-slate-500">Dr = balance receivable · Cr = balance payable</div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <div className="text-sm text-slate-500">Dr = balance receivable · Cr = balance payable</div>
+          <button
+            type="button"
+            onClick={() => {
+              setEntryForm((prev) => ({
+                ...prev,
+                kind: defaultEntryKind(account?.type),
+              }));
+              setShowForm((v) => !v);
+            }}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            {showForm ? "Cancel" : "Add entry"}
+          </button>
+        </div>
       </div>
+
+      {showForm && (
+        <form
+          onSubmit={handleAddEntry}
+          className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+        >
+          <div>
+            <label className="block text-sm font-medium mb-1">Date</label>
+            <input
+              required
+              type="date"
+              value={entryForm.date}
+              onChange={(e) => setEntryForm({ ...entryForm, date: e.target.value })}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+            <p className="mt-1 text-xs text-slate-500">You can pick earlier dates for past transactions.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Entry type</label>
+            <select
+              value={entryForm.kind}
+              onChange={(e) => setEntryForm({ ...entryForm, kind: e.target.value as EntryKind })}
+              className="w-full px-3 py-2 border rounded-md bg-white"
+            >
+              <option value="debit">{entryKindLabel(account?.type, "debit")}</option>
+              <option value="credit">{entryKindLabel(account?.type, "credit")}</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Amount (Rs.)</label>
+            <input
+              required
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={entryForm.amount}
+              onChange={(e) => setEntryForm({ ...entryForm, amount: e.target.value })}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-4">
+            <label className="block text-sm font-medium mb-1">Description</label>
+            <input
+              required
+              type="text"
+              value={entryForm.description}
+              onChange={(e) => setEntryForm({ ...entryForm, description: e.target.value })}
+              className="w-full px-3 py-2 border rounded-md"
+              placeholder="e.g. Feed purchase on credit"
+            />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-6 py-2 bg-secondary text-white rounded-md hover:bg-secondary/90 disabled:opacity-60"
+            >
+              {isSaving ? "Saving…" : "Save entry"}
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="rounded-xl shadow-sm border border-slate-300 overflow-hidden bg-white min-w-0">
         <div className="px-4 sm:px-6 py-4 border-b border-slate-300 bg-emerald-50">
@@ -110,7 +293,33 @@ export function LedgerDetailClient(props: { accountId: number }) {
         </div>
 
         {rows.length === 0 ? (
-          <div className="p-10 text-center text-slate-500">No ledger entries yet.</div>
+          <div className="p-10 text-center text-slate-500 space-y-4">
+            <p>No ledger entries yet.</p>
+            {account?.type === "Supplier" && duePurchaseDaysForAccount > 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-slate-600">
+                  Found {duePurchaseDaysForAccount} day(s) of credit purchases for this supplier that are not in the
+                  ledger yet.
+                </p>
+                <button
+                  type="button"
+                  disabled={isBackfilling}
+                  onClick={() => void handleBackfill()}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-emerald-600 text-emerald-800 hover:bg-emerald-50 text-sm font-medium disabled:opacity-60"
+                >
+                  {isBackfilling ? "Importing…" : "Import credit purchases"}
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600">
+                Use <strong>Add entry</strong> above for past dates, or record a{" "}
+                <Link href="/purchases?new=1" className="text-primary font-medium hover:underline">
+                  credit purchase
+                </Link>{" "}
+                with payment type &quot;Credit (Payable in Ledger)&quot;.
+              </p>
+            )}
+          </div>
         ) : (
           <ResponsiveTableShell
             mobile={rows.map((e) => (

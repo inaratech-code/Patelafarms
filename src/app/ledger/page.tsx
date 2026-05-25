@@ -23,10 +23,9 @@ export default function LedgerPage() {
   const [formData, setFormData] = useState({ name: "", type: "Supplier" });
 
   const latestBalanceByAccountId = useMemo(() => {
-    const m = new Map<number, { date: string; balance: number }>();
+    const m = new Map<number, number>();
     for (const e of entries) {
-      const cur = m.get(e.accountId);
-      if (!cur || e.date > cur.date) m.set(e.accountId, { date: e.date, balance: e.balance });
+      m.set(e.accountId, (m.get(e.accountId) ?? 0) + (e.debit - e.credit));
     }
     return m;
   }, [entries]);
@@ -183,7 +182,7 @@ export default function LedgerPage() {
                         const id = account.id;
                         const sums =
                           typeof id === "number" ? debitCreditTotalsByAccountId.get(id) ?? { debit: 0, credit: 0 } : { debit: 0, credit: 0 };
-                        const bal = typeof id === "number" ? (latestBalanceByAccountId.get(id)?.balance ?? 0) : 0;
+                        const bal = typeof id === "number" ? (latestBalanceByAccountId.get(id) ?? 0) : 0;
                         const { label, side } = asDrCr(bal);
                         return (
                           <div className="flex flex-col gap-1 items-start">

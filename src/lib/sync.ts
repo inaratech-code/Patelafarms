@@ -27,6 +27,7 @@ import { getSyncState, setSyncState } from "@/lib/syncState";
 import { ensureFarm, getFarmId } from "@/lib/farm";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
+import { recomputeLedgerBalances } from "@/lib/ledger";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -358,10 +359,6 @@ export async function applyEvents(events: SyncEvent[]) {
         const existingEntry = await db.ledgerEntries.where("uid").equals(params.uid).first();
         if (existingEntry) return;
 
-        const last = await db.ledgerEntries.where("accountId").equals(params.accountId).sortBy("date");
-        const prevBalance = last.length ? last[last.length - 1].balance : 0;
-        const balance = prevBalance + (Number(params.debit) - Number(params.credit));
-
         await db.ledgerEntries.add({
           uid: params.uid,
           accountId: params.accountId,
@@ -369,8 +366,9 @@ export async function applyEvents(events: SyncEvent[]) {
           description: params.description,
           debit: Number(params.debit) || 0,
           credit: Number(params.credit) || 0,
-          balance,
+          balance: 0,
         });
+        await recomputeLedgerBalances(params.accountId);
       };
 
       // Apply minimal event types we currently emit.

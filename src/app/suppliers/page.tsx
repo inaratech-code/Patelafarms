@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/db";
+import { ensureSupplierLedgerAccount } from "@/lib/ledger";
 import { Plus, Truck, ArrowRight, HandCoins } from "lucide-react";
 import {
   MobileCardActions,
@@ -48,7 +49,7 @@ export default function SuppliersPage() {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    await db.ledgerAccounts.add({ name: trimmed, type: "Supplier" });
+    await ensureSupplierLedgerAccount(trimmed);
     setName("");
     setShowForm(false);
   };
