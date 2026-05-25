@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { ArrowLeft, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ChevronDown, Download, FileSpreadsheet, FileText, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { exportLedgerExcel, exportLedgerPdf } from "@/lib/ledgerExport";
 import {
   backfillSupplierLedgerFromPurchases,
   postLedgerEntryWithSync,
@@ -54,6 +55,8 @@ function entryKindLabel(accountType: string | undefined, kind: EntryKind) {
 export function LedgerDetailClient(props: { accountId: number }) {
   const accountId = props.accountId;
   const [showForm, setShowForm] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isBackfilling, setIsBackfilling] = useState(false);
   const [entryForm, setEntryForm] = useState({
@@ -74,6 +77,17 @@ export function LedgerDetailClient(props: { accountId: number }) {
       setEntryForm((prev) => ({ ...prev, kind: defaultEntryKind(account.type) }));
     });
   }, [account?.type]);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [exportOpen]);
 
   const entries =
     useLiveQuery(
@@ -166,6 +180,42 @@ export function LedgerDetailClient(props: { accountId: number }) {
     }
   };
 
+  const exportMeta = useMemo(
+    () => ({
+      accountName: account?.name ?? "Account",
+      accountType: account?.type,
+      timePeriod,
+      closingBalance: latestBalance,
+      totalDebit: totals.debit,
+      totalCredit: totals.credit,
+    }),
+    [account?.name, account?.type, timePeriod, latestBalance, totals.debit, totals.credit]
+  );
+
+  const exportRows = useMemo(
+    () =>
+      rows.map((r) => ({
+        date: r.date,
+        dateBs: r.dateBs,
+        description: r.description,
+        opening: r.opening,
+        debit: r.debit,
+        credit: r.credit,
+        closing: r.closing,
+      })),
+    [rows]
+  );
+
+  const handleExportPdf = () => {
+    exportLedgerPdf(exportMeta, exportRows);
+    setExportOpen(false);
+  };
+
+  const handleExportExcel = () => {
+    exportLedgerExcel(exportMeta, exportRows);
+    setExportOpen(false);
+  };
+
   const handleBackfill = async () => {
     setIsBackfilling(true);
     try {
@@ -192,20 +242,60 @@ export function LedgerDetailClient(props: { accountId: number }) {
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
           <div className="text-sm text-slate-500">Dr = balance receivable · Cr = balance payable</div>
-          <button
-            type="button"
-            onClick={() => {
-              setEntryForm((prev) => ({
-                ...prev,
-                kind: defaultEntryKind(account?.type),
-              }));
-              setShowForm((v) => !v);
-            }}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            {showForm ? "Cancel" : "Add entry"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                type="button"
+                disabled={rows.length === 0}
+                onClick={() => setExportOpen((v) => !v)}
+                title={rows.length === 0 ? "Add entries before exporting" : "Export ledger"}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 disabled:opacity-50 disabled:hover:bg-white"
+              >
+                <Download className="w-4 h-4" />
+                Export
+                <ChevronDown className={`w-4 h-4 transition-transform ${exportOpen ? "rotate-180" : ""}`} />
+              </button>
+              {exportOpen && rows.length > 0 ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 z-20 mt-1 min-w-[11rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleExportPdf}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileText className="w-4 h-4 text-rose-600" />
+                    PDF
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleExportExcel}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                    Excel (.xlsx)
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEntryForm((prev) => ({
+                  ...prev,
+                  kind: defaultEntryKind(account?.type),
+                }));
+                setShowForm((v) => !v);
+              }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              {showForm ? "Cancel" : "Add entry"}
+            </button>
+          </div>
         </div>
       </div>
 
