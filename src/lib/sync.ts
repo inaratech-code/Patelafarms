@@ -28,6 +28,7 @@ import { ensureFarm, getFarmId } from "@/lib/farm";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 import { recomputeLedgerBalances } from "@/lib/ledger";
+import { bsYmdFromStored } from "@/lib/nepaliDate";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -352,6 +353,7 @@ export async function applyEvents(events: SyncEvent[]) {
         uid: string;
         accountId: number;
         date: string;
+        dateBs?: string;
         description: string;
         debit: number;
         credit: number;
@@ -359,10 +361,13 @@ export async function applyEvents(events: SyncEvent[]) {
         const existingEntry = await db.ledgerEntries.where("uid").equals(params.uid).first();
         if (existingEntry) return;
 
+        const entryDate = String(params.date ?? "");
+        const dateBs = params.dateBs?.trim() || bsYmdFromStored(entryDate);
         await db.ledgerEntries.add({
           uid: params.uid,
           accountId: params.accountId,
-          date: params.date,
+          date: entryDate,
+          dateBs,
           description: params.description,
           debit: Number(params.debit) || 0,
           credit: Number(params.credit) || 0,
@@ -431,6 +436,7 @@ export async function applyEvents(events: SyncEvent[]) {
               uid: eUid,
               accountId,
               date: String(entry.date ?? ""),
+              dateBs: typeof entry.dateBs === "string" ? entry.dateBs : undefined,
               description: String(entry.description ?? ""),
               debit: Number(entry.debit ?? 0) || 0,
               credit: Number(entry.credit ?? 0) || 0,

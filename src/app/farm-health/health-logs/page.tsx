@@ -7,6 +7,9 @@ import { FarmHealthModal } from "@/components/farm-health/FarmHealthModal";
 import { FarmHealthSubnav } from "@/components/farm-health/FarmHealthSubnav";
 import { db } from "@/lib/db";
 import { newUid } from "@/lib/uid";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
+import { datePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 export default function HealthLogsPage() {
   const logs = useLiveQuery(() => db.healthLogs.orderBy("date").reverse().toArray()) || [];
@@ -14,7 +17,7 @@ export default function HealthLogsPage() {
   const [batch, setBatch] = useState("");
   const [summary, setSummary] = useState("");
   const [notes, setNotes] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayAdYmd());
   const [saving, setSaving] = useState(false);
 
   const sorted = useMemo(() => logs.slice(), [logs]);
@@ -25,10 +28,11 @@ export default function HealthLogsPage() {
     if (!batch.trim()) return alert("Animal batch is required.");
     setSaving(true);
     try {
-      const iso = new Date(`${date}T12:00:00`).toISOString();
+      const { date: iso, dateBs } = datePairFromAdYmd(date);
       await db.healthLogs.add({
         uid: newUid(),
         date: iso,
+        dateBs,
         animalBatch: batch.trim(),
         summary: summary.trim(),
         notes: notes.trim() || undefined,
@@ -68,7 +72,7 @@ export default function HealthLogsPage() {
             <form onSubmit={save} className="p-4 space-y-3 text-sm">
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Date</label>
-                <input type="date" className="w-full px-3 py-2 border rounded-md" value={date} onChange={(e) => setDate(e.target.value)} />
+                <DualDateField value={date} onChange={setDate} required />
               </div>
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Animal batch</label>
@@ -110,7 +114,7 @@ export default function HealthLogsPage() {
             <div key={l.id ?? l.uid} className="p-4">
               <div className="font-medium text-slate-900 break-words">{l.summary}</div>
               <div className="text-sm text-slate-500 mt-0.5 break-words">
-                {new Date(l.date).toLocaleDateString()} · Batch {l.animalBatch}
+                <DualDateDisplay iso={l.date} dateBs={l.dateBs} layout="inline" /> · Batch {l.animalBatch}
                 {l.vaccineUsageId ? " · Linked to vaccine use" : ""}
               </div>
               {l.notes ? <div className="mt-2 text-sm text-slate-600">{l.notes}</div> : null}

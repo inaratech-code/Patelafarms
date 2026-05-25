@@ -1,6 +1,9 @@
 import { db, type LedgerAccount, type LedgerEntry } from "@/lib/db";
+import { isoToBsYmd, toIsoFromDateOnly } from "@/lib/nepaliDate";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
+
+export { toIsoFromDateOnly } from "@/lib/nepaliDate";
 
 export type LedgerAccountType = LedgerAccount["type"];
 
@@ -44,10 +47,6 @@ export async function getOrCreateCashLedgerAccountId() {
 
 function computeNextBalance(prevBalance: number, debit: number, credit: number) {
   return prevBalance + (debit - credit);
-}
-
-export function toIsoFromDateOnly(dateYYYYMMDD: string) {
-  return new Date(`${dateYYYYMMDD}T12:00:00`).toISOString();
 }
 
 function normalizeLedgerDate(date: string) {
@@ -136,6 +135,7 @@ export async function addLedgerEntry(params: {
     uid: newUid(),
     accountId: params.accountId,
     date,
+    dateBs: isoToBsYmd(date),
     description: params.description,
     debit,
     credit,
@@ -180,6 +180,7 @@ export async function postLedgerEntryWithSync(params: {
           entry: {
             uid: entryRow.uid,
             date: entryRow.date,
+            dateBs: entryRow.dateBs,
             description: entryRow.description,
             debit: entryRow.debit,
             credit: entryRow.credit,
@@ -236,6 +237,7 @@ export async function backfillSupplierLedgerFromPurchases(accountId: number) {
         uid,
         accountId,
         date: iso,
+        dateBs: isoToBsYmd(iso),
         description: `Purchase from ${name} (imported)`,
         debit: 0,
         credit: amount,
@@ -297,6 +299,7 @@ export async function postCashLedgerExpense(params: {
           entry: {
             uid: entryRow.uid,
             date: entryRow.date,
+            dateBs: entryRow.dateBs,
             description: entryRow.description,
             debit: entryRow.debit,
             credit: entryRow.credit,

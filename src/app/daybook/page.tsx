@@ -23,6 +23,8 @@ import {
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { todayAdYmd } from "@/lib/nepaliDate";
 
 function dayBookTypeBadgeClass(type: string): string {
   if (type === "Sale") return "bg-emerald-50 text-emerald-800";
@@ -46,7 +48,7 @@ function formatMoney(amount: number): string {
 
 export default function DayBookPage() {
   const allEntries = useLiveQuery(() => db.dayBook.toArray()) || [];
-  const [selectedDate, setSelectedDate] = useState(() => localDayKey(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => todayAdYmd());
 
   const rows = useMemo(() => {
     return allEntries
@@ -92,13 +94,10 @@ export default function DayBookPage() {
           <label htmlFor="daybook-date" className="text-sm font-medium text-slate-600">
             Date
           </label>
-          <input
+          <DualDateField
             id="daybook-date"
-            name="daybookDate"
-            type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-2 border rounded-md bg-white"
+            onChange={setSelectedDate}
           />
         </div>
       </div>

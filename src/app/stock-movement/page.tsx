@@ -9,6 +9,8 @@ import { normalizeDecimalInput, parseDecimalInput } from "@/lib/decimalInput";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { PageRoot } from "@/components/ui/responsive-table";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
+import { datePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 type MovementMode = "Add" | "Remove";
 
@@ -62,7 +64,7 @@ export default function StockMovementPage() {
       if (unitCost === 0) return alert("Cost price per unit must be greater than 0.");
     }
 
-    const date = new Date().toISOString();
+    const { date, dateBs } = datePairFromAdYmd(todayAdYmd());
     const prevQty = item.quantity;
     const nextQty = movementType === "IN" ? prevQty + qty : prevQty - qty;
 
@@ -100,6 +102,7 @@ export default function StockMovementPage() {
           type: movementType,
           reason: form.reason,
           date,
+          dateBs,
         };
         const id = await db.stockMovement.add(movement);
         await db.outbox.add(
@@ -300,7 +303,11 @@ export default function StockMovementPage() {
                         {unit}
                       </div>
                       <div className="mt-1 text-sm text-slate-600">Reason: {m.reason}</div>
-                      <div className="mt-1 text-sm text-slate-500">Time: {time}</div>
+                      <div className="mt-1 text-sm text-slate-500">
+                        <DualDateDisplay iso={m.date} dateBs={m.dateBs} layout="inline" />
+                        {" · "}
+                        {time}
+                      </div>
                     </div>
                     <div
                       className={`px-2.5 py-1 rounded-full text-xs font-medium ${

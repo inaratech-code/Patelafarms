@@ -5,6 +5,7 @@ import { newUid } from "@/lib/uid";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { FARM_HEALTH_EXPENSE_CATEGORY } from "@/lib/erp/expenseEntries";
 import { enqueueFarmHealthUsageOutbox } from "@/lib/farmHealthSync";
+import { adYmdToBsYmd, datePairFromIso } from "@/lib/nepaliDate";
 
 export function isoDateOnly(d: Date) {
   const y = d.getFullYear();
@@ -84,9 +85,10 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
     const available = Number(vaccine.qtyAvailable ?? 0);
     if (available < qty) throw new Error("Not enough vaccine stock.");
 
+    const dosePair = datePairFromIso(inp.doseDateIso);
     const unitCost = Number(vaccine.costPrice ?? 0);
     const expenseAmount = qty * unitCost;
-    const doseDay = isoDateOnly(new Date(inp.doseDateIso));
+    const doseDay = isoDateOnly(new Date(dosePair.date));
     const cadence = inp.cadence ?? "daily";
     const nextV = inp.nextIntervalValue;
     const nextU = inp.nextIntervalUnit;
@@ -105,8 +107,10 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
       vaccineId: vaccine.id,
       qtyUsed: qty,
       animalBatch: batch,
-      doseDate: inp.doseDateIso,
+      doseDate: dosePair.date,
+      doseDateBs: dosePair.dateBs,
       nextDoseDate,
+      nextDoseDateBs: nextDoseDate ? adYmdToBsYmd(nextDoseDate) : undefined,
       nextIntervalValue: nextV,
       nextIntervalUnit: nextU,
       notes: inp.notes?.trim() || undefined,
@@ -127,6 +131,7 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
         uid: reminderUid,
         vaccineUsageId: usageId,
         reminderDate: nextDoseDate,
+        reminderDateBs: adYmdToBsYmd(nextDoseDate),
         status: initialStatus,
         cadence,
         title: `${vaccine.name} — ${batch}`,
@@ -138,7 +143,8 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
     const logUid = newUid();
     const healthLogRecord = {
       uid: logUid,
-      date: inp.doseDateIso,
+      date: dosePair.date,
+      dateBs: dosePair.dateBs,
       animalBatch: batch,
       summary: `Vaccine / medicine: ${vaccine.name} (${qty} ${vaccine.unit})`,
       notes: inp.notes?.trim() || undefined,
@@ -160,7 +166,8 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
     const desc = `Vaccine / medicine: ${qty} ${vaccine.unit} ${vaccine.name} (${batch})`;
     const dayRow = {
       uid: dayUid,
-      time: inp.doseDateIso,
+      time: dosePair.date,
+      timeBs: dosePair.dateBs,
       type: "Expense" as const,
       category: FARM_HEALTH_EXPENSE_CATEGORY,
       amount: expenseAmount,
@@ -192,7 +199,7 @@ export async function recordVaccineUsage(inp: RecordVaccineUsageInput) {
     const cashLedgerId = await getOrCreateCashLedgerAccountId();
     const ledgerEntryId = (await addLedgerEntry({
       accountId: cashLedgerId,
-      date: inp.doseDateIso,
+      date: dosePair.date,
       description: `Vaccine expense: ${vaccine.name} (${batch})`,
       debit: 0,
       credit: expenseAmount,

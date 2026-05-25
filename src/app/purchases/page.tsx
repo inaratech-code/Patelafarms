@@ -5,6 +5,9 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type DayBookEntry } from "@/lib/db";
 import { addLedgerEntry, ensureSupplierLedgerAccount } from "@/lib/ledger";
+import { datePairFromAdYmd, timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
@@ -67,7 +70,7 @@ export default function PurchasesPage() {
   const [purchaseUnitCostStr, setPurchaseUnitCostStr] = useState("");
   const [purchaseForm, setPurchaseForm] = useState({
     supplierName: "",
-    date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+    date: todayAdYmd(),
     paymentType: "Due" as "Paid" | "Due",
     method: "Cash" as PaymentMethod,
     financialAccountId: 0,
@@ -130,7 +133,8 @@ export default function PurchasesPage() {
     if (purchaseForm.lineItems.length === 0) return alert("Add at least one item to purchase.");
 
     const inv = inventory ?? [];
-    const date = new Date(`${purchaseForm.date}T12:00:00`).toISOString();
+    const { date, dateBs } = datePairFromAdYmd(purchaseForm.date);
+    const { time, timeBs } = timePairFromAdYmd(purchaseForm.date);
     const supplierName = purchaseForm.supplierName.trim();
 
     const lineItemsResolved = purchaseForm.lineItems.map((li) => {
@@ -162,6 +166,7 @@ export default function PurchasesPage() {
           quantity: li.quantity,
           totalCost: lineCost,
           date,
+          dateBs,
           paidAmount: paid,
           dueAmount: due,
           paymentStatus,
@@ -174,7 +179,15 @@ export default function PurchasesPage() {
         const newQty = prevQty + addQty;
         const newAvg = newQty > 0 ? (prevQty * prevAvg + lineCost) / newQty : prevAvg;
         await db.inventory.update(item.id!, { quantity: newQty, avgCost: newAvg });
-        const movement = { uid: newUid(), itemId: item.id!, quantity: li.quantity, type: "IN" as const, reason: "Purchase" as const, date };
+        const movement = {
+          uid: newUid(),
+          itemId: item.id!,
+          quantity: li.quantity,
+          type: "IN" as const,
+          reason: "Purchase" as const,
+          date,
+          dateBs,
+        };
         await db.stockMovement.add(movement);
 
         await db.outbox.add(
@@ -204,7 +217,8 @@ export default function PurchasesPage() {
         const acct = await db.financialAccounts.get(accountId);
         const day = {
           uid: newUid(),
-          time: date,
+          time,
+          timeBs,
           type: "Expense" as const,
           category: "Purchase" as const,
           amount: totalCost,
@@ -250,7 +264,8 @@ export default function PurchasesPage() {
         const acctDb = await db.financialAccounts.get(accountIdDb);
         const day = {
           uid: newUid(),
-          time: date,
+          time,
+          timeBs,
           type: "Expense" as const,
           category: "Purchase" as const,
           amount: totalCost,
@@ -280,7 +295,7 @@ export default function PurchasesPage() {
     setPurchaseUnitCostStr("");
     setPurchaseForm({
       supplierName: "",
-      date: new Date().toISOString().slice(0, 10),
+      date: todayAdYmd(),
       paymentType: "Due",
       method: "Cash",
       financialAccountId: 0,
@@ -339,14 +354,12 @@ export default function PurchasesPage() {
             </datalist>
             <p className="mt-1 text-xs text-slate-500">New supplier names are added to the ledger automatically.</p>
           </div>
-          <div>
+          <div className="lg:col-span-2">
             <label className="block text-sm font-medium mb-1">Date</label>
-            <input
-              required
-              type="date"
+            <DualDateField
               value={purchaseForm.date}
-              onChange={(e) => setPurchaseForm({ ...purchaseForm, date: e.target.value })}
-              className="w-full px-3 py-2 border rounded-md"
+              onChange={(d) => setPurchaseForm({ ...purchaseForm, date: d })}
+              required
             />
           </div>
           <div className="lg:col-span-2">
@@ -517,7 +530,7 @@ export default function PurchasesPage() {
                 <MobileDataCard key={purchase.id}>
                   <MobileCardHeader
                     title={purchase.supplierName}
-                    subtitle={new Date(purchase.date).toLocaleDateString()}
+                    subtitle={<DualDateDisplay iso={purchase.date} dateBs={purchase.dateBs} layout="inline" />}
                     trailing={
                       <span className="text-sm font-semibold text-slate-900 tabular-nums">
                         Rs. {purchase.totalCost.toLocaleString()}
@@ -547,7 +560,7 @@ export default function PurchasesPage() {
                   return (
                     <tr key={purchase.id}>
                       <td className="px-4 lg:px-6 py-4 text-sm text-slate-500">
-                        {new Date(purchase.date).toLocaleDateString()}
+                        <DualDateDisplay iso={purchase.date} dateBs={purchase.dateBs} layout="inline" />
                       </td>
                       <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{purchase.supplierName}</td>
                       <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{item?.name || "Unknown"}</td>

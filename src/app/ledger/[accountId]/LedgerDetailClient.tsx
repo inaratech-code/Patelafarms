@@ -10,30 +10,29 @@ import {
   postLedgerEntryWithSync,
 } from "@/lib/ledger";
 import {
+  importRajAgroTradeSupplierLedger,
+  RAJ_AGRO_LEDGER_ROW_COUNT,
+  RAJ_AGRO_SUPPLIER_NAME,
+} from "@/lib/ledgerImports/rajAgroTrade";
+import {
   MobileCardDl,
   MobileCardHeader,
   MobileDataCard,
   PageRoot,
   ResponsiveTableShell,
 } from "@/components/ui/responsive-table";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
+import { formatDualDate, todayAdYmd } from "@/lib/nepaliDate";
 
 /** Line-item debit/credit: always show the number (including 0) so both columns stay visible. */
 function formatLedgerSide(n: number) {
   return n.toLocaleString();
 }
 
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString();
-}
-
 function asDrCr(amount: number) {
   if (amount === 0) return "-";
   return amount >= 0 ? "Dr" : "Cr";
-}
-
-function isoToday() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 type EntryKind = "debit" | "credit";
@@ -58,8 +57,9 @@ export function LedgerDetailClient(props: { accountId: number }) {
   const [showForm, setShowForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isBackfilling, setIsBackfilling] = useState(false);
+  const [isRajAgroImporting, setIsRajAgroImporting] = useState(false);
   const [entryForm, setEntryForm] = useState({
-    date: isoToday(),
+    date: todayAdYmd(),
     description: "",
     kind: "credit" as EntryKind,
     amount: "",
@@ -121,8 +121,8 @@ export function LedgerDetailClient(props: { accountId: number }) {
   const latestBalance = rows.length ? rows[rows.length - 1].closing : 0;
   const timePeriod = useMemo(() => {
     if (!rows.length) return "";
-    const from = formatDate(rows[0].date);
-    const to = formatDate(rows[rows.length - 1].date);
+    const from = formatDualDate(rows[0].date, rows[0].dateBs);
+    const to = formatDualDate(rows[rows.length - 1].date, rows[rows.length - 1].dateBs);
     return from === to ? from : `${from} to ${to}`;
   }, [rows]);
 
@@ -156,7 +156,7 @@ export function LedgerDetailClient(props: { accountId: number }) {
       });
       setShowForm(false);
       setEntryForm({
-        date: isoToday(),
+        date: todayAdYmd(),
         description: "",
         kind: defaultEntryKind(account?.type),
         amount: "",
@@ -165,6 +165,30 @@ export function LedgerDetailClient(props: { accountId: number }) {
       alert(err instanceof Error ? err.message : "Could not save entry.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const isRajAgroAccount =
+    account?.type === "Supplier" && account.name.trim() === RAJ_AGRO_SUPPLIER_NAME;
+
+  const handleRajAgroImport = async () => {
+    const replace = rows.length > 0;
+    const msg = replace
+      ? `Replace all ${rows.length} existing entries with the ${RAJ_AGRO_LEDGER_ROW_COUNT} lines from the paper ledger?`
+      : `Import ${RAJ_AGRO_LEDGER_ROW_COUNT} lines from the paper ledger for ${RAJ_AGRO_SUPPLIER_NAME}?`;
+    if (!window.confirm(msg)) return;
+
+    setIsRajAgroImporting(true);
+    try {
+      const result = await importRajAgroTradeSupplierLedger({ replaceExisting: replace });
+      const side = result.closingBalance >= 0 ? "Dr" : "Cr";
+      alert(
+        `Imported ${result.created} entries${result.removed ? ` (replaced ${result.removed})` : ""}. Closing balance: Rs. ${Math.abs(result.closingBalance).toLocaleString()} ${side}. Sync from the header to update other devices.`
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Import failed.");
+    } finally {
+      setIsRajAgroImporting(false);
     }
   };
 
@@ -194,20 +218,32 @@ export function LedgerDetailClient(props: { accountId: number }) {
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
           <div className="text-sm text-slate-500">Dr = balance receivable · Cr = balance payable</div>
-          <button
-            type="button"
-            onClick={() => {
-              setEntryForm((prev) => ({
-                ...prev,
-                kind: defaultEntryKind(account?.type),
-              }));
-              setShowForm((v) => !v);
-            }}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            {showForm ? "Cancel" : "Add entry"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {isRajAgroAccount ? (
+              <button
+                type="button"
+                disabled={isRajAgroImporting}
+                onClick={() => void handleRajAgroImport()}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-emerald-600 text-emerald-800 rounded-lg hover:bg-emerald-50 text-sm font-medium disabled:opacity-60"
+              >
+                {isRajAgroImporting ? "Importing…" : "Import paper ledger"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setEntryForm((prev) => ({
+                  ...prev,
+                  kind: defaultEntryKind(account?.type),
+                }));
+                setShowForm((v) => !v);
+              }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              {showForm ? "Cancel" : "Add entry"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -218,12 +254,10 @@ export function LedgerDetailClient(props: { accountId: number }) {
         >
           <div>
             <label className="block text-sm font-medium mb-1">Date</label>
-            <input
+            <DualDateField
               required
-              type="date"
               value={entryForm.date}
-              onChange={(e) => setEntryForm({ ...entryForm, date: e.target.value })}
-              className="w-full px-3 py-2 border rounded-md"
+              onChange={(adYmd) => setEntryForm({ ...entryForm, date: adYmd })}
             />
             <p className="mt-1 text-xs text-slate-500">You can pick earlier dates for past transactions.</p>
           </div>
@@ -295,7 +329,25 @@ export function LedgerDetailClient(props: { accountId: number }) {
         {rows.length === 0 ? (
           <div className="p-10 text-center text-slate-500 space-y-4">
             <p>No ledger entries yet.</p>
-            {account?.type === "Supplier" && duePurchaseDaysForAccount > 0 ? (
+            {isRajAgroAccount ? (
+              <div className="space-y-2">
+                <p className="text-sm text-slate-600">
+                  Import the handwritten supplier ledger (16 lines, BS + English dates).
+                </p>
+                <button
+                  type="button"
+                  disabled={isRajAgroImporting}
+                  onClick={() => void handleRajAgroImport()}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 text-sm font-medium disabled:opacity-60"
+                >
+                  {isRajAgroImporting
+                    ? "Importing…"
+                    : rows.length > 0
+                      ? "Replace with paper ledger"
+                      : "Import paper ledger"}
+                </button>
+              </div>
+            ) : account?.type === "Supplier" && duePurchaseDaysForAccount > 0 ? (
               <div className="space-y-2">
                 <p className="text-sm text-slate-600">
                   Found {duePurchaseDaysForAccount} day(s) of credit purchases for this supplier that are not in the
@@ -326,7 +378,7 @@ export function LedgerDetailClient(props: { accountId: number }) {
               <MobileDataCard key={e.id}>
                 <MobileCardHeader
                   title={e.description}
-                  subtitle={formatDate(e.date)}
+                  subtitle={<DualDateDisplay iso={e.date} dateBs={e.dateBs} layout="inline" />}
                   trailing={
                     <span className="text-sm font-bold text-slate-900 tabular-nums">
                       {e.closing === 0 ? (
@@ -364,7 +416,9 @@ export function LedgerDetailClient(props: { accountId: number }) {
               <tbody>
                 {rows.map((e) => (
                   <tr key={e.id} className="h-10">
-                    <td className="border border-slate-700 px-3 py-2 text-sm whitespace-nowrap">{formatDate(e.date)}</td>
+                    <td className="border border-slate-700 px-3 py-2 text-sm whitespace-nowrap">
+                      <DualDateDisplay iso={e.date} dateBs={e.dateBs} layout="inline" />
+                    </td>
                     <td className="border border-slate-700 px-3 py-2 text-sm">{e.description}</td>
                     <td className="border border-slate-700 px-3 py-2 text-sm text-right whitespace-nowrap">
                       {e.opening ? Math.abs(e.opening).toLocaleString() : "-"}{" "}

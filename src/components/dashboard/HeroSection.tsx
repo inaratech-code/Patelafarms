@@ -2,36 +2,8 @@
 
 import { motion } from "framer-motion";
 import { CalendarDays, CloudSun, Wifi, WifiOff } from "lucide-react";
-import NepaliDate from "nepali-date-converter";
+import { adYmdFromDate, formatAdDate, formatBsDate } from "@/lib/nepaliDate";
 import { useEffect, useMemo, useState } from "react";
-
-function formatLongDate(d: Date) {
-  return d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "2-digit" });
-}
-
-const NEPALI_MONTHS_EN = [
-  "Baisakh",
-  "Jestha",
-  "Ashadh",
-  "Shrawan",
-  "Bhadra",
-  "Ashwin",
-  "Kartik",
-  "Mangsir",
-  "Poush",
-  "Magh",
-  "Falgun",
-  "Chaitra",
-] as const;
-
-function formatNepaliDateBS(d: Date) {
-  const bs = new NepaliDate(d);
-  const y = bs.getYear();
-  const m = bs.getMonth(); // 0-based
-  const day = bs.getDate();
-  const monthLabel = NEPALI_MONTHS_EN[m] ?? `M${m + 1}`;
-  return `${y} ${monthLabel} ${String(day).padStart(2, "0")}`;
-}
 
 function weatherLabelFromCode(code: number) {
   // Open-Meteo weather codes: https://open-meteo.com/en/docs
@@ -185,10 +157,10 @@ export function HeroSection(props: { isOnline: boolean }) {
               Today
             </div>
             <div className="mt-1 text-[11px] sm:text-xs font-semibold text-[#0f172a] leading-tight" suppressHydrationWarning>
-              {now ? formatLongDate(now) : "--"}
+              {now ? formatAdDate(adYmdFromDate(now)) : "--"}
             </div>
             <div className="mt-0.5 text-[10px] font-medium text-[#64748b] leading-tight" suppressHydrationWarning>
-              {now ? `${formatNepaliDateBS(now)} (BS)` : "--"}
+              {now ? `${formatBsDate(adYmdFromDate(now))} BS` : "--"}
             </div>
           </div>
 

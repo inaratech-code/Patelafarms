@@ -16,6 +16,9 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
 import { buildSupplierNameOptions } from "@/lib/supplierOptions";
 import { PageRoot } from "@/components/ui/responsive-table";
+import { DualDateField } from "@/components/ui/DualDateField";
+import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
+import { datePairFromAdYmd, timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 import { normalizeSaleUnit, SALE_UNIT_OPTIONS } from "@/lib/saleUnits";
 
 type LedgerOutAccount = { uid: string; name: string; type: string } | null;
@@ -100,12 +103,14 @@ export default function OrdersPage() {
   const [saleForm, setSaleForm] = useState<{
     itemId: number;
     customerName: string;
+    date: string;
     paymentType: "Cash" | "Credit";
     method: PaymentMethod;
     financialAccountId: number;
   }>({
     itemId: 0,
     customerName: "",
+    date: todayAdYmd(),
     paymentType: "Cash",
     method: "Cash",
     financialAccountId: 0,
@@ -113,7 +118,7 @@ export default function OrdersPage() {
   const [purchaseUnitCostStr, setPurchaseUnitCostStr] = useState("");
   const [purchaseForm, setPurchaseForm] = useState({
     supplierName: "",
-    date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+    date: todayAdYmd(),
     paymentType: "Credit" as "Cash" | "Credit",
     method: "Cash" as PaymentMethod,
     financialAccountId: 0,
@@ -206,7 +211,8 @@ export default function OrdersPage() {
       return alert("Enter a valid selling price per unit (greater than 0).");
     }
     const totalPrice = unitPrice * qtyParsed;
-    const date = new Date().toISOString();
+    const { date, dateBs } = datePairFromAdYmd(saleForm.date);
+    const { time, timeBs } = timePairFromAdYmd(saleForm.date);
 
     const isCredit = saleForm.paymentType === "Credit";
     const customerNameResolved = saleForm.customerName.trim();
@@ -229,6 +235,7 @@ export default function OrdersPage() {
         customerName: customerNameResolved || undefined,
         paymentType: saleForm.paymentType,
         date,
+        dateBs,
         paidAmount: isCredit ? 0 : totalPrice,
         dueAmount: isCredit ? totalPrice : 0,
         paymentStatus: (isCredit ? "due" : "paid") as PaymentStatusErp,
@@ -238,7 +245,15 @@ export default function OrdersPage() {
       // 2. Reduce Stock
       await db.inventory.update(item.id!, { quantity: item.quantity - qtyParsed });
       // 3. Record Movement
-      const movement = { uid: newUid(), itemId: item.id!, quantity: qtyParsed, type: 'OUT' as const, reason: 'Sale' as const, date };
+      const movement = {
+        uid: newUid(),
+        itemId: item.id!,
+        quantity: qtyParsed,
+        type: "OUT" as const,
+        reason: "Sale" as const,
+        date,
+        dateBs,
+      };
       const movementId = await db.stockMovement.add(movement);
       // 4. Day book: cash (affects cash) + credit (journal-only, does not affect cash balance)
       let dayBookId: number | null = null;
@@ -251,7 +266,8 @@ export default function OrdersPage() {
         if (!isCredit) {
           dayBookEntry = {
             uid: dayBookUid,
-            time: date,
+            time,
+            timeBs,
             type: "Income",
             category: "Sale",
             amount: totalPrice,
@@ -267,7 +283,8 @@ export default function OrdersPage() {
         } else {
           dayBookEntry = {
             uid: dayBookUid,
-            time: date,
+            time,
+            timeBs,
             type: "Income",
             category: "Sale",
             amount: totalPrice,
@@ -382,6 +399,7 @@ export default function OrdersPage() {
     setSaleForm({
       itemId: 0,
       customerName: "",
+      date: todayAdYmd(),
       paymentType: "Cash",
       method: "Cash",
       financialAccountId: 0,
@@ -393,7 +411,8 @@ export default function OrdersPage() {
     if (!purchaseForm.supplierName.trim()) return alert("Supplier name is required.");
     if (purchaseForm.lineItems.length === 0) return alert("Add at least one item to purchase.");
 
-    const date = new Date(`${purchaseForm.date}T12:00:00`).toISOString();
+    const { date, dateBs } = datePairFromAdYmd(purchaseForm.date);
+    const { time, timeBs } = timePairFromAdYmd(purchaseForm.date);
     const supplierName = purchaseForm.supplierName.trim();
 
     const lineItemsResolved = purchaseForm.lineItems.map((li) => {
@@ -430,11 +449,12 @@ export default function OrdersPage() {
           quantity: li.quantity,
           totalCost: lineCost,
           date,
+          dateBs,
         };
         const pid = await db.purchases.add(purchase);
 
         await db.inventory.update(item.id!, { quantity: newQty, avgCost: newAvg });
-        const movement = { uid: newUid(), itemId: item.id!, quantity: li.quantity, type: 'IN' as const, reason: 'Purchase' as const, date };
+        const movement = { uid: newUid(), itemId: item.id!, quantity: li.quantity, type: 'IN' as const, reason: 'Purchase' as const, date, dateBs };
         const mid = await db.stockMovement.add(movement);
 
         purchaseRows.push({ ...purchase, itemUid: item.uid, localId: pid });
@@ -458,7 +478,8 @@ export default function OrdersPage() {
         dayBookUid = newUid();
         dayBookEntry = {
           uid: dayBookUid,
-          time: date,
+          time,
+          timeBs,
           type: "Expense",
           category: "Purchase",
           amount: totalCost,
@@ -520,7 +541,8 @@ export default function OrdersPage() {
         dayBookUid = newUid();
         dayBookEntry = {
           uid: dayBookUid,
-          time: date,
+          time,
+          timeBs,
           type: "Expense",
           category: "Purchase",
           amount: totalCost,
@@ -576,7 +598,7 @@ export default function OrdersPage() {
     setPurchaseUnitCostStr("");
     setPurchaseForm({
       supplierName: "",
-      date: new Date().toISOString().slice(0, 10),
+      date: todayAdYmd(),
       paymentType: "Credit",
       method: "Cash",
       financialAccountId: 0,
@@ -673,6 +695,14 @@ export default function OrdersPage() {
               title="Retail rate for this sale (cash or credit)"
             />
           </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="block text-sm font-medium mb-1">Date</label>
+            <DualDateField
+              required
+              value={saleForm.date}
+              onChange={(adYmd) => setSaleForm({ ...saleForm, date: adYmd })}
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium mb-1">Customer</label>
             <select
@@ -758,12 +788,10 @@ export default function OrdersPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Date</label>
-              <input
+              <DualDateField
                 required
-                type="date"
                 value={purchaseForm.date}
-                onChange={(e) => setPurchaseForm({ ...purchaseForm, date: e.target.value })}
-                className="w-full px-3 py-2 border rounded-md"
+                onChange={(adYmd) => setPurchaseForm({ ...purchaseForm, date: adYmd })}
               />
             </div>
             <div>
@@ -958,7 +986,7 @@ export default function OrdersPage() {
                             <span className="text-slate-500 font-normal">({sale.paymentType})</span>
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">
-                            {new Date(sale.date).toLocaleDateString()}
+                            <DualDateDisplay iso={sale.date} dateBs={sale.dateBs} layout="inline" />
                           </div>
                         </div>
                         <div className="shrink-0 text-sm font-semibold text-alert-green tabular-nums">
@@ -991,7 +1019,9 @@ export default function OrdersPage() {
                       const item = inventory.find((i) => i.id === sale.itemId);
                       return (
                         <tr key={sale.id}>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(sale.date).toLocaleDateString()}</td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            <DualDateDisplay iso={sale.date} dateBs={sale.dateBs} layout="inline" />
+                          </td>
                           <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">
                             {sale.customerName?.trim()
                               ? sale.customerName.trim()
@@ -1038,7 +1068,7 @@ export default function OrdersPage() {
                             {purchase.supplierName}
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">
-                            {new Date(purchase.date).toLocaleDateString()}
+                            <DualDateDisplay iso={purchase.date} dateBs={purchase.dateBs} layout="inline" />
                           </div>
                         </div>
                         <div className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
@@ -1067,7 +1097,9 @@ export default function OrdersPage() {
                       const item = inventory.find((i) => i.id === purchase.itemId);
                       return (
                         <tr key={purchase.id}>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(purchase.date).toLocaleDateString()}</td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            <DualDateDisplay iso={purchase.date} dateBs={purchase.dateBs} layout="inline" />
+                          </td>
                           <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{purchase.supplierName}</td>
                           <td className="px-4 lg:px-6 py-4 text-sm text-slate-900">{purchase.quantity}x {item?.name || "Unknown"}</td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">- Rs. {purchase.totalCost}</td>
