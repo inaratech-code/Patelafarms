@@ -22,7 +22,6 @@ type Props = {
   className?: string;
   disabled?: boolean;
   required?: boolean;
-  /** Default picker calendar when no saved preference */
   defaultMode?: DateInputCalendar;
 };
 
@@ -71,40 +70,43 @@ export function DualDateField({
   };
 
   const bsYmd = adYmdToBsYmd(adValue);
+  const bothPreview = (
+    <span className="text-xs text-slate-500 whitespace-nowrap shrink-0 hidden sm:inline">
+      <span className="text-slate-400">|</span> AD {formatAdDate(adValue)} · BS {formatBsDate(adValue, bsYmd)}
+    </span>
+  );
 
   return (
-    <div className={className ?? "space-y-3"}>
-      <div>
-        <span className="block text-xs font-medium text-slate-600 mb-1.5">Choose calendar to enter date</span>
-        <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+    <div className={className}>
+      <div className="flex flex-wrap items-center gap-2">
+        <div
+          className="inline-flex shrink-0 rounded-md border border-slate-200 p-0.5 bg-slate-50"
+          role="group"
+          aria-label="Calendar type"
+        >
           <button
             type="button"
             disabled={disabled}
             onClick={() => switchMode("AD")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+            className={`px-2.5 py-1.5 text-xs font-semibold rounded transition-colors ${
               mode === "AD" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            English (AD)
+            AD
           </button>
           <button
             type="button"
             disabled={disabled}
             onClick={() => switchMode("BS")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+            className={`px-2.5 py-1.5 text-xs font-semibold rounded transition-colors ${
               mode === "BS" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            Nepali (BS)
+            BS
           </button>
         </div>
-      </div>
 
-      {mode === "AD" ? (
-        <div>
-          <label htmlFor={`${fieldId}-ad`} className="block text-sm font-medium text-slate-700 mb-1">
-            Date (AD)
-          </label>
+        {mode === "AD" ? (
           <input
             id={`${fieldId}-ad`}
             type="date"
@@ -112,13 +114,11 @@ export function DualDateField({
             disabled={disabled}
             value={adValue}
             onChange={(e) => onChange(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md bg-white"
+            className="min-w-0 flex-1 sm:flex-none sm:w-[11.5rem] px-2.5 py-1.5 border rounded-md bg-white text-sm"
+            aria-label="Date (English AD)"
           />
-        </div>
-      ) : (
-        <div>
-          <span className="block text-sm font-medium text-slate-700 mb-1">Date (BS)</span>
-          <div className="grid grid-cols-3 gap-2">
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
             <input
               type="number"
               min={2000}
@@ -131,7 +131,7 @@ export function DualDateField({
                 setBsYear(y);
                 applyBs(y, bsMonthIndex, bsDay);
               }}
-              className="px-2 py-2 border rounded-md bg-white text-sm"
+              className="w-[4.25rem] shrink-0 px-2 py-1.5 border rounded-md bg-white text-sm tabular-nums"
               aria-label="BS year"
             />
             <select
@@ -142,7 +142,7 @@ export function DualDateField({
                 setBsMonthIndex(mi);
                 applyBs(bsYear, mi, bsDay);
               }}
-              className="px-2 py-2 border rounded-md bg-white text-sm"
+              className="min-w-0 flex-1 sm:w-[6.5rem] px-2 py-1.5 border rounded-md bg-white text-sm"
               aria-label="BS month"
             >
               {NEPALI_MONTHS.map((name, i) => (
@@ -163,18 +163,18 @@ export function DualDateField({
                 setBsDay(d);
                 applyBs(bsYear, bsMonthIndex, d);
               }}
-              className="px-2 py-2 border rounded-md bg-white text-sm"
+              className="w-12 shrink-0 px-2 py-1.5 border rounded-md bg-white text-sm tabular-nums"
               aria-label="BS day"
             />
           </div>
-          <p className="mt-1 text-xs text-slate-500 tabular-nums">{bsYmd}</p>
-        </div>
-      )}
+        )}
 
-      <div className="rounded-md bg-slate-50 border border-slate-100 px-3 py-2 text-xs text-slate-600">
-        <span className="font-medium text-slate-700">Both calendars: </span>
-        AD {formatAdDate(adValue)} · BS {formatBsDate(adValue, bsYmd)}
+        {bothPreview}
       </div>
+
+      <p className="mt-1 text-xs text-slate-500 sm:hidden">
+        AD {formatAdDate(adValue)} · BS {formatBsDate(adValue, bsYmd)}
+      </p>
     </div>
   );
 }
