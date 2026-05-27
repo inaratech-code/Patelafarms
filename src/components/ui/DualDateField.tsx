@@ -70,15 +70,10 @@ export function DualDateField({
   };
 
   const bsYmd = adYmdToBsYmd(adValue);
-  const bothPreview = (
-    <span className="text-xs text-slate-500 whitespace-nowrap shrink-0 hidden sm:inline">
-      <span className="text-slate-400">|</span> AD {formatAdDate(adValue)} · BS {formatBsDate(adValue, bsYmd)}
-    </span>
-  );
 
   return (
     <div className={className}>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <div
           className="inline-flex shrink-0 rounded-md border border-slate-200 p-0.5 bg-slate-50"
           role="group"
@@ -118,7 +113,7 @@ export function DualDateField({
             aria-label="Date (English AD)"
           />
         ) : (
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:flex-none">
             <input
               type="number"
               min={2000}
@@ -168,11 +163,9 @@ export function DualDateField({
             />
           </div>
         )}
-
-        {bothPreview}
       </div>
 
-      <p className="mt-1 text-xs text-slate-500 sm:hidden">
+      <p className="mt-1 text-xs text-slate-500">
         AD {formatAdDate(adValue)} · BS {formatBsDate(adValue, bsYmd)}
       </p>
     </div>

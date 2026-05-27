@@ -325,9 +325,10 @@ export default function PurchasesPage() {
       {showForm && (
         <form
           onSubmit={handlePurchaseSubmit}
-          className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
+          className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-4"
         >
-          <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          <div className="md:col-span-5">
             <label className="block text-sm font-medium mb-1">Supplier</label>
             <input
               required
@@ -346,14 +347,15 @@ export default function PurchasesPage() {
             </datalist>
             <p className="mt-1 text-xs text-slate-500">New supplier names are added to the ledger automatically.</p>
           </div>
-          <div>
+          <div className="md:col-span-4 min-w-0">
+            <label className="block text-sm font-medium mb-1">Date</label>
             <DualDateField
               value={purchaseForm.date}
               onChange={(ad) => setPurchaseForm({ ...purchaseForm, date: ad })}
               required
             />
           </div>
-          <div className="lg:col-span-2">
+          <div className="md:col-span-3">
             <label className="block text-sm font-medium mb-1">Payment Type</label>
             <select
               value={purchaseForm.paymentType}
@@ -364,9 +366,10 @@ export default function PurchasesPage() {
               <option value="Paid">Paid Now (Affects Account)</option>
             </select>
           </div>
+          </div>
 
           {purchaseForm.paymentType === "Paid" ? (
-            <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Payment Mode</label>
                 <select
@@ -379,7 +382,7 @@ export default function PurchasesPage() {
                   <option value="BankTransfer">Bank Transfer</option>
                 </select>
               </div>
-              <div className="sm:col-span-2 lg:col-span-4">
+              <div>
                 <label className="block text-sm font-medium mb-1">Account</label>
                 <select
                   value={purchaseForm.financialAccountId}
@@ -394,9 +397,10 @@ export default function PurchasesPage() {
                   ))}
                 </select>
               </div>
-            </>
+            </div>
           ) : null}
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           <div>
             <label className="block text-sm font-medium mb-1">Select Item</label>
             <select
@@ -445,7 +449,7 @@ export default function PurchasesPage() {
               title="Leave blank to use the item list cost"
             />
           </div>
-          <div className="lg:col-span-2 flex items-end">
+          <div className="lg:col-span-2">
             <button
               type="button"
               onClick={addPurchaseLineItem}
@@ -454,8 +458,9 @@ export default function PurchasesPage() {
               Add Item
             </button>
           </div>
+          </div>
 
-          <div className="lg:col-span-5 border rounded-lg overflow-hidden">
+          <div className="border rounded-lg overflow-hidden">
             <div className="bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700">Items Purchased</div>
             {purchaseForm.lineItems.length === 0 ? (
               <div className="px-4 py-6 text-sm text-slate-500">No items added yet.</div>
@@ -499,7 +504,7 @@ export default function PurchasesPage() {
             )}
           </div>
 
-          <div className="sm:col-span-2 lg:col-span-5 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mt-2 border-t border-slate-200 pt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center border-t border-slate-200 pt-4">
             <div className="text-lg font-semibold text-slate-900">Total: Rs. {purchaseTotal.toLocaleString()}</div>
             <button type="submit" className="px-6 py-2 bg-alert-green text-white rounded-md hover:bg-alert-green/90">
               Complete Purchase
