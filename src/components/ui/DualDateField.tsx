@@ -44,7 +44,7 @@ export function DualDateField({
   const [bsDay, setBsDay] = useState(() => adYmdToBsParts(adValue).day);
 
   useEffect(() => {
-    setMode(getStoredDateInputMode());
+    queueMicrotask(() => setMode(getStoredDateInputMode()));
   }, []);
 
   useEffect(() => {

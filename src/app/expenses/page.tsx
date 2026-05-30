@@ -3,7 +3,7 @@
 import { Plus, Receipt } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type DayBookEntry } from "@/lib/db";
+import { db } from "@/lib/db";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/responsive-table";
 import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
 import { DualDateField } from "@/components/ui/DualDateField";
-import { datePairFromAdYmd, timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
+import { timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 export default function ExpensesPage() {
   const router = useRouter();
