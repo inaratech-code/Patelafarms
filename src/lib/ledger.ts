@@ -9,6 +9,7 @@ export type LedgerAccountType = LedgerAccount["type"];
 
 /** Single ledger account used to track cash sales + expenses as a running balance. */
 export const CASH_LEDGER_NAME = "Cash sales & expenses";
+export const CASH_LEDGER_UID = "system:cash-sales-expenses";
 
 /**
  * Ensures a single ledger account to track cash balance movements (sales in, expenses out),
@@ -20,13 +21,22 @@ export async function getOrCreateCashLedgerAccountId() {
     .first();
 
   if (typeof existing?.id === "number") {
-    if (!existing.uid) await db.ledgerAccounts.update(existing.id, { uid: newUid() });
+    if (existing.uid !== CASH_LEDGER_UID) {
+      await db.ledgerAccounts.update(existing.id, { uid: CASH_LEDGER_UID });
+      await db.outbox.add(
+        makeSyncEvent({
+          entityType: "ledger.account",
+          entityId: CASH_LEDGER_UID,
+          op: "update",
+          payload: { id: existing.id, account: { uid: CASH_LEDGER_UID, name: CASH_LEDGER_NAME, type: "Customer" as const } },
+        })
+      );
+    }
     return existing.id;
   }
 
-  const uid = newUid();
   const account: LedgerAccount = {
-    uid,
+    uid: CASH_LEDGER_UID,
     name: CASH_LEDGER_NAME,
     type: "Customer",
   };
@@ -36,9 +46,9 @@ export async function getOrCreateCashLedgerAccountId() {
   await db.outbox.add(
     makeSyncEvent({
       entityType: "ledger.account",
-      entityId: uid,
+      entityId: CASH_LEDGER_UID,
       op: "create",
-      payload: { id, account: { uid, name: CASH_LEDGER_NAME, type: "Customer" as const } },
+      payload: { id, account: { uid: CASH_LEDGER_UID, name: CASH_LEDGER_NAME, type: "Customer" as const } },
     })
   );
 

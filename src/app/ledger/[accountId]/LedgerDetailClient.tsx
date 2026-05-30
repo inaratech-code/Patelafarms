@@ -138,6 +138,32 @@ export function LedgerDetailClient(props: { accountId: number }) {
     return from === to ? from : `${from} to ${to}`;
   }, [rows]);
 
+  const exportMeta = useMemo(
+    () => ({
+      accountName: account?.name ?? "Account",
+      accountType: account?.type,
+      timePeriod,
+      closingBalance: latestBalance,
+      totalDebit: totals.debit,
+      totalCredit: totals.credit,
+    }),
+    [account?.name, account?.type, timePeriod, latestBalance, totals.debit, totals.credit]
+  );
+
+  const exportRows = useMemo(
+    () =>
+      rows.map((r) => ({
+        date: r.date,
+        dateBs: r.dateBs,
+        description: r.description,
+        opening: r.opening,
+        debit: r.debit,
+        credit: r.credit,
+        closing: r.closing,
+      })),
+    [rows]
+  );
+
   if (!Number.isFinite(accountId)) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 text-slate-600">Invalid account.</div>
@@ -179,32 +205,6 @@ export function LedgerDetailClient(props: { accountId: number }) {
       setIsSaving(false);
     }
   };
-
-  const exportMeta = useMemo(
-    () => ({
-      accountName: account?.name ?? "Account",
-      accountType: account?.type,
-      timePeriod,
-      closingBalance: latestBalance,
-      totalDebit: totals.debit,
-      totalCredit: totals.credit,
-    }),
-    [account?.name, account?.type, timePeriod, latestBalance, totals.debit, totals.credit]
-  );
-
-  const exportRows = useMemo(
-    () =>
-      rows.map((r) => ({
-        date: r.date,
-        dateBs: r.dateBs,
-        description: r.description,
-        opening: r.opening,
-        debit: r.debit,
-        credit: r.credit,
-        closing: r.closing,
-      })),
-    [rows]
-  );
 
   const handleExportPdf = () => {
     exportLedgerPdf(exportMeta, exportRows);

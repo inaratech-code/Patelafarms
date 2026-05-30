@@ -32,9 +32,12 @@ export async function postPayment(params: {
   const method: PaymentMethod = params.method ?? "Cash";
   const accountId = typeof params.accountId === "number" ? params.accountId : await getOrCreateDefaultCashAccountId();
   const paymentUid = newUid();
+  const partyUid = party.uid ?? newUid();
 
   // Option A: Cash always affects Day Book cash-in-hand.
+  const dayBookUid = newUid();
   const dayBook: Omit<DayBookEntry, "id"> = {
+    uid: dayBookUid,
     time,
     timeBs,
     type: isReceive ? "Income" : "Expense",
@@ -53,6 +56,13 @@ export async function postPayment(params: {
   };
 
   return await db.transaction("rw", db.tables, async () => {
+    if (!party.uid) await db.ledgerAccounts.update(params.partyAccountId, { uid: partyUid });
+    const financialAccount = await db.financialAccounts.get(accountId);
+    const financialAccountUid = financialAccount?.uid ?? newUid();
+    if (financialAccount?.id && !financialAccount.uid) {
+      await db.financialAccounts.update(financialAccount.id, { uid: financialAccountUid });
+    }
+
     const ledgerEntryId = await addLedgerEntry({
       accountId: params.partyAccountId,
       date,
@@ -60,9 +70,9 @@ export async function postPayment(params: {
       debit: isReceive ? 0 : amount,
       credit: isReceive ? amount : 0,
     });
+    const ledgerEntry = typeof ledgerEntryId === "number" ? await db.ledgerEntries.get(ledgerEntryId) : undefined;
 
-    const dayBookUid = newUid();
-    const dayBookEntryId = await db.dayBook.add({ ...dayBook, uid: dayBookUid });
+    const dayBookEntryId = await db.dayBook.add(dayBook);
 
     const payment: Omit<Payment, "id"> = {
       uid: paymentUid,
@@ -87,7 +97,27 @@ export async function postPayment(params: {
         entityType: "payment.posted",
         entityId: paymentUid,
         op: "create",
-        payload: { paymentId, ledgerEntryId, dayBookEntryId, payment, dayBookUid },
+        payload: {
+          paymentId,
+          ledgerEntryId,
+          dayBookEntryId,
+          payment,
+          partyAccount: { uid: partyUid, name: party.name, type: party.type },
+          financialAccount: financialAccount
+            ? { uid: financialAccountUid, name: financialAccount.name, type: financialAccount.type }
+            : null,
+          ledgerEntry: ledgerEntry?.uid
+            ? {
+                uid: ledgerEntry.uid,
+                date: ledgerEntry.date,
+                dateBs: ledgerEntry.dateBs,
+                description: ledgerEntry.description,
+                debit: ledgerEntry.debit,
+                credit: ledgerEntry.credit,
+              }
+            : null,
+          dayBook,
+        },
       })
     );
 
