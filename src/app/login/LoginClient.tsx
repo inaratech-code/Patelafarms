@@ -93,17 +93,6 @@ export function LoginClient() {
           className="h-16 w-auto max-w-[220px] object-contain"
         />
         <h1 className="mt-4 text-2xl font-bold tracking-tight text-[#0f2744]">Inara POS</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Built by{" "}
-          <a
-            href="https://www.inaratech.com.np"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-[#0f2744] hover:text-[#0871b3] hover:underline"
-          >
-            Inara Tech
-          </a>
-        </p>
       </div>
 
       <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
