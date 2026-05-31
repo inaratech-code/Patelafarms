@@ -181,7 +181,7 @@ export function LoginClient() {
           rel="noopener noreferrer"
           className="hover:text-[#0871b3] hover:underline"
         >
-          www.inaratech.com.np
+          Built by Inara Tech
         </a>
       </footer>
     </div>
