@@ -84,10 +84,32 @@ export function LoginClient() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 pb-8">
+      <div className="mb-6 flex flex-col items-center text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/inara-tech-logo.png"
+          alt="Inara Tech"
+          className="h-16 w-auto max-w-[220px] object-contain"
+        />
+        <h1 className="mt-4 text-2xl font-bold tracking-tight text-[#0f2744]">Inara POS</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Built by{" "}
+          <a
+            href="https://www.inaratech.com.np"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-[#0f2744] hover:text-[#0871b3] hover:underline"
+          >
+            Inara Tech
+          </a>
+        </p>
+      </div>
+
       <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-8 pt-8 pb-6 border-b border-slate-200">
-          <div className="text-2xl font-semibold text-slate-900">Login</div>
+          <div className="text-2xl font-semibold text-slate-900">Sign in</div>
+          <p className="mt-1 text-sm text-slate-500">Enter your credentials to continue</p>
         </div>
 
         <form onSubmit={onSubmit} className="p-8 space-y-4">
@@ -151,6 +173,17 @@ export function LoginClient() {
           </button>
         </form>
       </div>
+
+      <footer className="mt-8 text-center text-xs text-slate-400">
+        <a
+          href="https://www.inaratech.com.np"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-[#0871b3] hover:underline"
+        >
+          www.inaratech.com.np
+        </a>
+      </footer>
     </div>
   );
 }
