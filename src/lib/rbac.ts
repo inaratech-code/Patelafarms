@@ -143,13 +143,38 @@ export function requiredPermissionsForPath(pathname: string): PermissionId[] {
   return [];
 }
 
-export function pickDefaultRoute(perms: Set<PermissionId>): string {
-  if (perms.has("*") || perms.has("dashboard")) return "/";
-  if (perms.has("transactions.sales")) return "/orders";
-  if (perms.has("inventory.items")) return "/inventory";
-  if (perms.has("accounts.ledger")) return "/ledger";
-  if (perms.has("reports")) return "/reports";
-  if (perms.has("settings")) return "/settings";
-  return "/";
+const DEFAULT_ROUTE_BY_PERMISSION: Array<[PermissionId, string]> = [
+  ["dashboard", "/"],
+  ["reports", "/reports"],
+  ["outstanding", "/outstanding"],
+  ["inventory.items", "/inventory"],
+  ["inventory.consumption", "/consumption"],
+  ["inventory.stockMovement", "/stock-movement"],
+  ["inventory.lossWastage", "/loss-wastage"],
+  ["transactions.overview", "/transactions"],
+  ["transactions.sales", "/orders"],
+  ["transactions.purchases", "/purchases"],
+  ["transactions.expenses", "/expenses"],
+  ["accounts.ledger", "/ledger"],
+  ["accounts.dayBook", "/daybook"],
+  ["accounts.payments", "/payments"],
+  ["accounts.accounts", "/accounts"],
+  ["people.customers", "/customers"],
+  ["people.suppliers", "/suppliers"],
+  ["people.workers", "/workers"],
+  ["people.users", "/users"],
+  ["farmHealth.vaccines", "/farm-health/vaccines"],
+  ["farmHealth.doseSchedule", "/farm-health/dose-schedule"],
+  ["farmHealth.healthLogs", "/farm-health/health-logs"],
+  ["alerts", "/alerts"],
+  ["settings", "/settings"],
+];
+
+export function pickDefaultRoute(perms: Set<PermissionId>): string | null {
+  if (perms.has("*")) return "/";
+  for (const [permission, route] of DEFAULT_ROUTE_BY_PERMISSION) {
+    if (perms.has(permission)) return route;
+  }
+  return null;
 }
 
