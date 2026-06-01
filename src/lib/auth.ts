@@ -6,6 +6,8 @@ import { isPasswordPwned } from "@/lib/pwnedPasswords";
 
 export const SESSION_KEY = "pf.session.v1";
 export const LAST_ACTIVE_KEY = "pf.lastActiveAt.v1";
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 64;
 
 export type Session = {
   userId: number;
@@ -63,8 +65,8 @@ export async function sha256Base64(input: string) {
 async function validateNewPasswordOrThrow(newPassword: string) {
   const pwd = newPassword ?? "";
   // Keep max short to match existing UI and avoid accidental clipboard disasters.
-  if (pwd.length < 12 || pwd.length > 64) {
-    throw new Error("New password must be between 12 and 64 characters");
+  if (pwd.length < PASSWORD_MIN_LENGTH || pwd.length > PASSWORD_MAX_LENGTH) {
+    throw new Error(`New password must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters`);
   }
   if (await isPasswordPwned(pwd)) {
     throw new Error("That password was found in a data breach. Choose a different password.");
