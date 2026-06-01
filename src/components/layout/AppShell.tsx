@@ -150,6 +150,10 @@ export function AppShell(props: { children: React.ReactNode }) {
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;
 
+  const authed = Boolean(session?.userId);
+  // Keep the shell blank while redirecting unauthenticated users (avoids dashboard flash).
+  if (!authed && !isBootstrapAllowed) return null;
+
   return (
     <SidebarProvider>
       <PushAlertsWatcher />

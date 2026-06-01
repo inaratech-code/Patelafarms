@@ -47,6 +47,11 @@ export default function RootLayout({
     >
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=location.pathname;if(p==="/login"||p==="/users")return;var s=localStorage.getItem("pf.session.v1");if(!s){location.replace("/login?next="+encodeURIComponent(p||"/"));}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className="min-h-full bg-background">
         <ServiceWorkerRegistration />
