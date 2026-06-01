@@ -9,7 +9,6 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { ensureFarm, publishFarmCloudLogin, deleteFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { requirePasswordConfirm } from "@/lib/passwordConfirm";
-import { isPasswordPwned } from "@/lib/pwnedPasswords";
 import {
   MobileCardActions,
   MobileCardHeader,
@@ -273,12 +272,6 @@ export default function UsersPage() {
     const validationError = validateUserForm();
     if (validationError) {
       setUserFormError(validationError);
-      return;
-    }
-
-    // Best-effort check (offline allowed). If pwned, block creation.
-    if (await isPasswordPwned(userForm.password)) {
-      setUserFormError("That password was found in a data breach. Choose a different password.");
       return;
     }
 

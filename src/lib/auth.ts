@@ -2,7 +2,6 @@ import { db } from "@/lib/db";
 import { enqueueUserRecordOutbox } from "@/lib/sync";
 import { ensureFarm, publishFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
-import { isPasswordPwned } from "@/lib/pwnedPasswords";
 
 export const SESSION_KEY = "pf.session.v1";
 export const LAST_ACTIVE_KEY = "pf.lastActiveAt.v1";
@@ -67,9 +66,6 @@ async function validateNewPasswordOrThrow(newPassword: string) {
   // Keep max short to match existing UI and avoid accidental clipboard disasters.
   if (pwd.length < PASSWORD_MIN_LENGTH || pwd.length > PASSWORD_MAX_LENGTH) {
     throw new Error(`New password must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters`);
-  }
-  if (await isPasswordPwned(pwd)) {
-    throw new Error("That password was found in a data breach. Choose a different password.");
   }
 }
 
