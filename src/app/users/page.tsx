@@ -185,6 +185,9 @@ export default function UsersPage() {
     }
   }, [showCreateUser]);
 
+  const selectedRole = roleById.get(userForm.roleId);
+  const isAdminRole = selectedRole?.name?.toLowerCase?.() === "admin";
+
   const validateUserForm = (): string | null => {
     const username = userForm.username.trim();
     if (!username) return "Username is required.";
@@ -205,9 +208,6 @@ export default function UsersPage() {
   };
 
   const userFormValidationError = validateUserForm();
-
-  const selectedRole = roleById.get(userForm.roleId);
-  const isAdminRole = selectedRole?.name?.toLowerCase?.() === "admin";
 
   const createRole = async (e: React.FormEvent) => {
     e.preventDefault();
