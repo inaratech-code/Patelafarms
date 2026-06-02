@@ -119,6 +119,44 @@ const PERMISSION_GROUPS: Array<{
 
 const DEFAULT_PERMISSIONS = new Set<PermissionId>(["dashboard"]);
 
+const DEFAULT_ROLE_SEEDS: Array<{
+  name: string;
+  description: string;
+  permissions: string[];
+  isSystem: boolean;
+}> = [
+  {
+    name: "admin",
+    description: "Full access to all sections",
+    permissions: ["*"],
+    isSystem: true,
+  },
+  {
+    name: "manager",
+    description: "Manage daily operations",
+    permissions: PERMISSION_GROUPS.flatMap((group) => group.items.map((item) => item.id)),
+    isSystem: true,
+  },
+  {
+    name: "worker",
+    description: "Limited access",
+    permissions: ["dashboard", "inventory.items", "transactions.sales"],
+    isSystem: true,
+  },
+];
+
+async function seedDefaultRolesIfMissing() {
+  if ((await db.roles.count()) > 0) return;
+  const withUids = DEFAULT_ROLE_SEEDS.map((role) => ({
+    ...role,
+    uid:
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  }));
+  await db.roles.bulkAdd(withUids);
+}
+
 function toggleSet<T>(s: Set<T>, value: T, checked: boolean) {
   const next = new Set(s);
   if (checked) next.add(value);
@@ -148,6 +186,7 @@ export default function UsersPage() {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showUserPassword, setShowUserPassword] = useState({ password: false, confirm: false });
   const [userFormError, setUserFormError] = useState<string | null>(null);
+  const [roleSeedError, setRoleSeedError] = useState<string | null>(null);
 
   const [roleForm, setRoleForm] = useState({
     name: "",
@@ -159,6 +198,7 @@ export default function UsersPage() {
     const list = roles ?? [];
     return list.find((r) => typeof r.id === "number")?.id ?? 0;
   }, [roles]);
+  const rolesCount = roles?.length;
 
   const [userForm, setUserForm] = useState({
     username: "",
@@ -183,6 +223,25 @@ export default function UsersPage() {
       });
     }
   }, [showCreateUser]);
+
+  useEffect(() => {
+    if (rolesCount !== 0) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      void seedDefaultRolesIfMissing()
+        .then(() => {
+          if (!cancelled) setRoleSeedError(null);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setRoleSeedError(err instanceof Error ? err.message : "Could not initialize default roles.");
+          }
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rolesCount]);
 
   const selectedRole = roleById.get(userForm.roleId);
   const isAdminRole = selectedRole?.name?.toLowerCase?.() === "admin";
@@ -350,6 +409,12 @@ export default function UsersPage() {
           </button>
         </div>
       </div>
+
+      {roleSeedError ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          Could not initialize default roles: {roleSeedError}
+        </div>
+      ) : null}
 
       {/* Create Role Modal */}
       {showCreateRole ? (
