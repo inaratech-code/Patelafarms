@@ -25,8 +25,10 @@ export function AppShell(props: { children: React.ReactNode }) {
 
   // Read session only on the client (avoids SSR/hydration treating everyone as logged out).
   useEffect(() => {
-    refreshSession();
-    setAuthReady(true);
+    queueMicrotask(() => {
+      refreshSession();
+      setAuthReady(true);
+    });
   }, [pathname, refreshSession]);
 
   useEffect(() => {
