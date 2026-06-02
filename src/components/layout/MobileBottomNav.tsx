@@ -40,22 +40,29 @@ export function MobileBottomNav() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const session = getSession();
-  const sessionUser = useLiveQuery(async () => {
+  const currentSessionUserId = session?.userId ?? 0;
+  const sessionUserResult = useLiveQuery(async () => {
     const userId = session?.userId ?? 0;
-    if (!userId) return null;
-    return (await db.users.get(userId)) ?? null;
+    if (!userId) return { userId, user: null };
+    return { userId, user: (await db.users.get(userId)) ?? null };
   }, [session?.userId]);
-  const role = useLiveQuery(async () => {
+  const sessionUserReady =
+    sessionUserResult !== undefined && sessionUserResult.userId === currentSessionUserId;
+  const sessionUser = sessionUserReady ? sessionUserResult.user : undefined;
+  const currentRoleId = sessionUser?.roleId ?? 0;
+  const roleResult = useLiveQuery(async () => {
     const roleId = sessionUser?.roleId ?? 0;
-    if (!roleId) return null;
-    return (await db.roles.get(roleId)) ?? null;
+    if (!roleId) return { roleId, role: null };
+    return { roleId, role: (await db.roles.get(roleId)) ?? null };
   }, [sessionUser?.roleId]);
+  const roleReady = roleResult !== undefined && roleResult.roleId === currentRoleId;
+  const role = roleReady ? roleResult.role : undefined;
   const perms = useMemo(() => {
     if (!session?.userId) return normalizePermissions([]);
-    if (sessionUser === undefined || !sessionUser?.id) return normalizePermissions([]);
-    if (role === undefined || role === null) return normalizePermissions([]);
+    if (!sessionUserReady || !sessionUser?.id) return normalizePermissions([]);
+    if (!roleReady || role === null) return normalizePermissions([]);
     return normalizePermissions(role?.permissions as string[] | undefined);
-  }, [role, session?.userId, sessionUser]);
+  }, [role, roleReady, session?.userId, sessionUser, sessionUserReady]);
   const visibleNav = nav.filter((i) => i.isAction || canAccessPath(perms, i.href));
   const visibleAddActions = addActions.filter((a) => canAccessPath(perms, a.href));
 
