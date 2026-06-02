@@ -4,7 +4,7 @@ import { SidebarDesktop, SidebarProvider } from "@/components/sidebar/Sidebar";
 import { TopHeader } from "@/components/layout/TopHeader";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { clearSession, getSession, LAST_ACTIVE_KEY, type Session } from "@/lib/auth";
@@ -25,8 +25,10 @@ export function AppShell(props: { children: React.ReactNode }) {
 
   // Read session only on the client (avoids SSR/hydration treating everyone as logged out).
   useEffect(() => {
-    refreshSession();
-    setAuthReady(true);
+    queueMicrotask(() => {
+      refreshSession();
+      setAuthReady(true);
+    });
   }, [pathname, refreshSession]);
 
   useEffect(() => {
@@ -41,15 +43,29 @@ export function AppShell(props: { children: React.ReactNode }) {
       window.removeEventListener("storage", onStorage);
     };
   }, [refreshSession]);
-  const role = useLiveQuery(async () => {
-    const roleId = session?.roleId ?? 0;
-    if (!roleId) return null;
-    return (await db.roles.get(roleId)) ?? null;
-  }, [session?.roleId]);
+  const currentSessionUserId = session?.userId ?? 0;
+  const sessionUserResult = useLiveQuery(async () => {
+    const userId = session?.userId ?? 0;
+    if (!userId) return { userId, user: null };
+    return { userId, user: (await db.users.get(userId)) ?? null };
+  }, [session?.userId]);
+  const sessionUserReady =
+    sessionUserResult !== undefined && sessionUserResult.userId === currentSessionUserId;
+  const sessionUser = sessionUserReady ? sessionUserResult.user : undefined;
 
-  const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
+  const currentRoleId = sessionUser?.roleId ?? 0;
+  const roleResult = useLiveQuery(async () => {
+    const roleId = sessionUser?.roleId ?? 0;
+    if (!roleId) return { roleId, role: null };
+    return { roleId, role: (await db.roles.get(roleId)) ?? null };
+  }, [sessionUser?.roleId]);
+  const roleReady = roleResult !== undefined && roleResult.roleId === currentRoleId;
+  const role = roleReady ? roleResult.role : undefined;
+
+  const usersLoaded = users !== undefined;
+  const hasUsers = usersLoaded && users.length > 0;
   const isLoginRoute = pathname === "/login";
-  const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
+  const isBootstrapAllowed = usersLoaded && !hasUsers && (pathname === "/users" || pathname === "/login");
 
   // Auto logout after 1 hour of inactivity.
   useEffect(() => {
@@ -114,23 +130,38 @@ export function AppShell(props: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!authReady) return;
+    if (!usersLoaded) return;
     const authed = Boolean(session?.userId);
     if (!isLoginRoute && !isBootstrapAllowed && !authed) {
       window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
     }
-  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
+  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, session?.userId, usersLoaded]);
 
   useEffect(() => {
     if (!authReady) return;
+    if (!usersLoaded) return;
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
-    if (session?.roleId && role == null) return;
+    if (!sessionUserReady) return;
+    if (!sessionUser?.id) {
+      clearSession();
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+      window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+      return;
+    }
+    if (!roleReady) return;
+    if (role === null) {
+      clearSession();
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+      window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+      return;
+    }
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     const target = pickDefaultRoute(perms);
     if (!canAccessPath(perms, pathname || "/")) {
       if (target !== pathname) window.location.replace(target);
     }
-  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
+  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, roleReady, session?.userId, sessionUser, sessionUserReady, usersLoaded]);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -145,7 +176,7 @@ export function AppShell(props: { children: React.ReactNode }) {
     return () => window.clearInterval(id);
   }, [isLoginRoute]);
 
-  if (!authReady && !isLoginRoute) return null;
+  if ((!authReady || !usersLoaded) && !isLoginRoute) return null;
 
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;
@@ -153,6 +184,12 @@ export function AppShell(props: { children: React.ReactNode }) {
   const authed = Boolean(session?.userId);
   // Keep the shell blank while redirecting unauthenticated users (avoids dashboard flash).
   if (!authed && !isBootstrapAllowed) return null;
+  if (authed) {
+    if (!sessionUserReady || !sessionUser?.id) return null;
+    if (!roleReady || !role) return null;
+    const perms = normalizePermissions(role.permissions as string[] | undefined);
+    if (!canAccessPath(perms, pathname || "/")) return null;
+  }
 
   return (
     <SidebarProvider>

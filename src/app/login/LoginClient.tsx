@@ -11,6 +11,17 @@ import { syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 
+function safeNextPath(next: string | null) {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  try {
+    const parsed = new URL(next, window.location.origin);
+    if (parsed.origin !== window.location.origin) return "/";
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
 export function LoginClient() {
   const search = useSearchParams();
   const users = useLiveQuery(() => db.users.toArray());
@@ -73,7 +84,7 @@ export function LoginClient() {
         }
         await loginWithPassword({ username, password });
       }
-      const next = search.get("next") ?? "/";
+      const next = safeNextPath(search.get("next"));
       window.location.replace(next);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Login failed";
