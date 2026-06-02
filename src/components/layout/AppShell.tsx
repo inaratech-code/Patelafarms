@@ -4,7 +4,7 @@ import { SidebarDesktop, SidebarProvider } from "@/components/sidebar/Sidebar";
 import { TopHeader } from "@/components/layout/TopHeader";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { clearSession, getSession, LAST_ACTIVE_KEY, type Session } from "@/lib/auth";
@@ -41,15 +41,22 @@ export function AppShell(props: { children: React.ReactNode }) {
       window.removeEventListener("storage", onStorage);
     };
   }, [refreshSession]);
+  const sessionUser = useLiveQuery(async () => {
+    const userId = session?.userId ?? 0;
+    if (!userId) return null;
+    return (await db.users.get(userId)) ?? null;
+  }, [session?.userId]);
+
   const role = useLiveQuery(async () => {
-    const roleId = session?.roleId ?? 0;
+    const roleId = sessionUser?.roleId ?? 0;
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
-  }, [session?.roleId]);
+  }, [sessionUser?.roleId]);
 
-  const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
+  const usersLoaded = users !== undefined;
+  const hasUsers = usersLoaded && users.length > 0;
   const isLoginRoute = pathname === "/login";
-  const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
+  const isBootstrapAllowed = usersLoaded && !hasUsers && (pathname === "/users" || pathname === "/login");
 
   // Auto logout after 1 hour of inactivity.
   useEffect(() => {
@@ -114,23 +121,38 @@ export function AppShell(props: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!authReady) return;
+    if (!usersLoaded) return;
     const authed = Boolean(session?.userId);
     if (!isLoginRoute && !isBootstrapAllowed && !authed) {
       window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
     }
-  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
+  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, session?.userId, usersLoaded]);
 
   useEffect(() => {
     if (!authReady) return;
+    if (!usersLoaded) return;
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
-    if (session?.roleId && role == null) return;
+    if (sessionUser === undefined) return;
+    if (!sessionUser?.id) {
+      clearSession();
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+      window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+      return;
+    }
+    if (role === undefined) return;
+    if (role === null) {
+      clearSession();
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+      window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+      return;
+    }
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     const target = pickDefaultRoute(perms);
     if (!canAccessPath(perms, pathname || "/")) {
       if (target !== pathname) window.location.replace(target);
     }
-  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
+  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.userId, sessionUser, usersLoaded]);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -145,7 +167,7 @@ export function AppShell(props: { children: React.ReactNode }) {
     return () => window.clearInterval(id);
   }, [isLoginRoute]);
 
-  if (!authReady && !isLoginRoute) return null;
+  if ((!authReady || !usersLoaded) && !isLoginRoute) return null;
 
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;
@@ -153,6 +175,12 @@ export function AppShell(props: { children: React.ReactNode }) {
   const authed = Boolean(session?.userId);
   // Keep the shell blank while redirecting unauthenticated users (avoids dashboard flash).
   if (!authed && !isBootstrapAllowed) return null;
+  if (authed) {
+    if (sessionUser === undefined || !sessionUser?.id) return null;
+    if (role === undefined || role === null) return null;
+    const perms = normalizePermissions(role.permissions as string[] | undefined);
+    if (!canAccessPath(perms, pathname || "/")) return null;
+  }
 
   return (
     <SidebarProvider>

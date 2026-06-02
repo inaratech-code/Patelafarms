@@ -94,16 +94,22 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
   const ledgerEntries = useLiveQuery(() => db.ledgerEntries.toArray()) || [];
   const doseReminders = useLiveQuery(() => db.doseReminders.toArray()) || [];
   const session = useMemo(() => getSession(), [pathname]);
+  const sessionUser = useLiveQuery(async () => {
+    const userId = session?.userId ?? 0;
+    if (!userId) return null;
+    return (await db.users.get(userId)) ?? null;
+  }, [session?.userId]);
   const role = useLiveQuery(async () => {
-    const roleId = session?.roleId ?? 0;
+    const roleId = sessionUser?.roleId ?? 0;
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
-  }, [session?.roleId]);
+  }, [sessionUser?.roleId]);
   const perms = useMemo(() => {
-    // While the role record is loading, don't hide nav items (prevents "blank" sidebar flash).
-    if (session?.roleId && role == null) return normalizePermissions(["*"]);
+    if (!session?.userId) return normalizePermissions([]);
+    if (sessionUser === undefined || !sessionUser?.id) return normalizePermissions([]);
+    if (role === undefined || role === null) return normalizePermissions([]);
     return normalizePermissions(role?.permissions as string[] | undefined);
-  }, [role, session?.roleId]);
+  }, [role, session?.userId, sessionUser]);
 
   const alertBadge = useMemo(
     () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders }),

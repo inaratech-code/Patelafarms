@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Home, Package, Plus, Wallet, Settings, X, ShoppingCart, Truck, ArrowUpDown, Receipt, Users, HandCoins, AlertTriangle, BarChart3 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -40,15 +40,22 @@ export function MobileBottomNav() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const session = getSession();
+  const sessionUser = useLiveQuery(async () => {
+    const userId = session?.userId ?? 0;
+    if (!userId) return null;
+    return (await db.users.get(userId)) ?? null;
+  }, [session?.userId]);
   const role = useLiveQuery(async () => {
-    const roleId = session?.roleId ?? 0;
+    const roleId = sessionUser?.roleId ?? 0;
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
-  }, [session?.roleId]);
-  const perms =
-    session?.roleId && role == null
-      ? normalizePermissions(["*"])
-      : normalizePermissions(role?.permissions as string[] | undefined);
+  }, [sessionUser?.roleId]);
+  const perms = useMemo(() => {
+    if (!session?.userId) return normalizePermissions([]);
+    if (sessionUser === undefined || !sessionUser?.id) return normalizePermissions([]);
+    if (role === undefined || role === null) return normalizePermissions([]);
+    return normalizePermissions(role?.permissions as string[] | undefined);
+  }, [role, session?.userId, sessionUser]);
   const visibleNav = nav.filter((i) => i.isAction || canAccessPath(perms, i.href));
   const visibleAddActions = addActions.filter((a) => canAccessPath(perms, a.href));
 
