@@ -186,7 +186,7 @@ export function AppShell(props: { children: React.ReactNode }) {
   if (!authed && !isBootstrapAllowed) return null;
   if (authed) {
     if (!sessionUserReady || !sessionUser?.id) return null;
-    if (!roleReady || role === null) return null;
+    if (!roleReady || !role) return null;
     const perms = normalizePermissions(role.permissions as string[] | undefined);
     if (!canAccessPath(perms, pathname || "/")) return null;
   }
