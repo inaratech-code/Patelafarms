@@ -29,6 +29,7 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 import { recomputeLedgerBalances } from "@/lib/ledger";
 import { bsYmdFromStored } from "@/lib/nepaliDate";
+import { applyIncomingPurchaseCost } from "@/lib/inventoryCost";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -646,15 +647,7 @@ export async function applyEvents(events: SyncEvent[]) {
           if (!itemUid || typeof delta !== "number") continue;
           const inv = await db.inventory.where("uid").equals(itemUid).first();
           if (inv?.id) {
-            const prevQty = Number(inv.quantity ?? 0);
-            const nextQty = prevQty + delta;
-            if (delta > 0 && typeof unitCost === "number" && unitCost > 0) {
-              const prevAvg = Number(inv.avgCost ?? inv.costPrice ?? 0);
-              const newAvg = nextQty > 0 ? (prevAvg * prevQty + unitCost * delta) / nextQty : unitCost;
-              await db.inventory.update(inv.id, { quantity: nextQty, avgCost: newAvg, costPrice: unitCost });
-            } else {
-              await db.inventory.update(inv.id, { quantity: nextQty });
-            }
+            await db.inventory.update(inv.id, applyIncomingPurchaseCost(inv, delta, unitCost));
           }
         }
       }
