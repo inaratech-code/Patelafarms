@@ -35,4 +35,4 @@ export function clearInvalidSessionStorage() {
 }
 
 /** Inline script for layout `<head>` — must stay ES5-safe (no imports). */
-export const SESSION_GUARD_SCRIPT = `(function(){try{var k="pf.session.v1";var p=location.pathname;if(p==="/login"||p==="/users")return;var raw=localStorage.getItem(k);if(!raw){location.replace("/login?next="+encodeURIComponent(p||"/"));return;}try{var s=JSON.parse(raw);if(typeof s.userId!=="number"||typeof s.username!=="string"||typeof s.roleId!=="number"){localStorage.removeItem(k);location.replace("/login?next="+encodeURIComponent(p||"/"));}}catch(e){localStorage.removeItem(k);location.replace("/login?next="+encodeURIComponent(p||"/"));}}catch(e){}})();`;
+export const SESSION_GUARD_SCRIPT = `(function(){try{var k="pf.session.v1";var p=location.pathname;if(p==="/login"||p==="/users")return;var raw=localStorage.getItem(k);if(!raw){location.replace("/login");return;}try{var s=JSON.parse(raw);if(typeof s.userId!=="number"||typeof s.username!=="string"||typeof s.roleId!=="number"){localStorage.removeItem(k);location.replace("/login");}}catch(e){localStorage.removeItem(k);location.replace("/login");}}catch(e){}})();`;

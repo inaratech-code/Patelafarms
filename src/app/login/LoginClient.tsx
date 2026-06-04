@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
+import { DASHBOARD_PATH, loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
 import { formatLoginError } from "@/lib/loginErrors";
 import { FARM_ID_KEY, getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
 import { syncNow } from "@/lib/sync";
@@ -11,12 +11,6 @@ import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { setSyncState } from "@/lib/syncState";
 import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
-
-function readNextPath() {
-  if (typeof window === "undefined") return "/";
-  const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/") ? next : "/";
-}
 
 export function LoginClient() {
   const users = useLiveQuery(() => db.users.toArray());
@@ -31,7 +25,7 @@ export function LoginClient() {
   useEffect(() => {
     clearInvalidSessionStorage();
     const s = getSession();
-    if (s?.userId) window.location.replace(readNextPath());
+    if (s?.userId) window.location.replace(DASHBOARD_PATH);
   }, []);
 
   useEffect(() => {
@@ -92,7 +86,7 @@ export function LoginClient() {
         }
         await loginWithPassword({ username, password });
       }
-      window.location.replace(readNextPath());
+      window.location.replace(DASHBOARD_PATH);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed";
       setError(formatLoginError(msg, hasUsers));

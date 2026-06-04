@@ -7,7 +7,14 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { clearSession, getSession, LAST_ACTIVE_KEY, type Session } from "@/lib/auth";
+import {
+  clearSession,
+  DASHBOARD_PATH,
+  getSession,
+  LAST_ACTIVE_KEY,
+  POST_LOGIN_HOME_KEY,
+  type Session,
+} from "@/lib/auth";
 import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
 import { FarmHealthSoundBridge } from "@/components/notifications/FarmHealthSoundBridge";
 import { PushAlertsWatcher } from "@/components/notifications/PushAlertsWatcher";
@@ -118,7 +125,7 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!authReady) return;
     const authed = Boolean(session?.userId);
     if (!isLoginRoute && !isBootstrapAllowed && !authed) {
-      window.location.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+      window.location.replace("/login");
     }
   }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
 
@@ -127,10 +134,15 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
     if (session?.roleId && role == null) return;
+    const path = pathname || "/";
+    if (path === DASHBOARD_PATH && sessionStorage.getItem(POST_LOGIN_HOME_KEY) === "1") {
+      sessionStorage.removeItem(POST_LOGIN_HOME_KEY);
+      return;
+    }
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     const target = pickDefaultRoute(perms);
-    if (!canAccessPath(perms, pathname || "/")) {
-      if (target !== pathname) window.location.replace(target);
+    if (!canAccessPath(perms, path)) {
+      if (target !== path) window.location.replace(target);
     }
   }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
 
