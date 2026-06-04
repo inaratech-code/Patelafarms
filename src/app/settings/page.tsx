@@ -12,11 +12,11 @@ import {
   Bell,
 } from "lucide-react";
 import { db, type User } from "@/lib/db";
-import { changePassword, clearSession, getSession } from "@/lib/auth";
+import { changePassword, getSession } from "@/lib/auth";
 import { getOrCreateDeviceId } from "@/lib/device";
 import { getSyncState } from "@/lib/syncState";
 import { restartAutoSync } from "@/lib/autoSync";
-import { syncNow, pushOutbox, pullEvents, publishAllCloudLoginsFromDexie } from "@/lib/sync";
+import { syncNow, pushOutbox, pullEvents } from "@/lib/sync";
 import { getFarmId } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
@@ -121,8 +121,8 @@ export default function SettingsPage() {
         const r = await pullEvents();
         setSyncStatus(`Pulled ${r.pulled} event(s).`);
       } else {
-        const cloud = await publishAllCloudLoginsFromDexie();
         const r = await syncNow();
+        const cloud = r.cloudLogins;
         const cloudNote =
           cloud.published > 0
             ? ` · ${cloud.published} login(s) registered for other devices`

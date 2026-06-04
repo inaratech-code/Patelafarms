@@ -2,7 +2,7 @@
 
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getFarmId } from "@/lib/farm";
-import { applyEvents, pullEvents, pushOutbox } from "@/lib/sync";
+import { applyEvents, pullEvents, publishAllCloudLoginsFromDexie, pushOutbox } from "@/lib/sync";
 import { db, type SyncEventOp } from "@/lib/db";
 
 let _started = false;
@@ -43,6 +43,7 @@ async function tick() {
     _isTicking = true;
     await pushOutbox();
     await pullEvents();
+    await publishAllCloudLoginsFromDexie();
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("pf-sync-complete"));
     }

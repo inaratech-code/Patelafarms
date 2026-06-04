@@ -249,7 +249,6 @@ export async function pushOutbox() {
   }
   await enqueueRoleUserOutboxBackfillOnce();
   await enqueueFarmHealthOutboxBackfillOnce();
-  await publishAllCloudLoginsFromDexie();
   if (pending.length === 0) return { pushed: 0 };
 
   // Insert in chunks to avoid large payloads.
@@ -862,14 +861,10 @@ export async function applyEvents(events: SyncEvent[]) {
 
 export async function syncNow() {
   await ensureSupabaseAuth();
-  try {
-    if (getFarmId()) await publishAllCloudLoginsFromDexie();
-  } catch {
-    /* farm / Supabase not ready */
-  }
   const push = await pushOutbox();
   const pull = await pullEvents();
-  return { ...push, ...pull };
+  const cloudLogins = await publishAllCloudLoginsFromDexie();
+  return { ...push, ...pull, cloudLogins };
 }
 
 /** Pull all farm events (pages until empty). Used when a new device links to a farm. */
@@ -896,7 +891,8 @@ export async function bootstrapDeviceLoginFromCloud(params: { username: string; 
   await ensureSupabaseAuth();
 
   const { linkFarmWithCredentialsIfPossible } = await import("@/lib/farm");
-  const linkedFarmId = await linkFarmWithCredentialsIfPossible(username, passwordHash);
+  const existingFarmId = getFarmId();
+  const linkedFarmId = existingFarmId ?? (await linkFarmWithCredentialsIfPossible(username, passwordHash));
 
   if (!getFarmId()) {
     return { linked: false, pulled: 0, reason: "link_failed" as const };
