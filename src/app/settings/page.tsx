@@ -12,7 +12,7 @@ import {
   Bell,
 } from "lucide-react";
 import { db, type User } from "@/lib/db";
-import { changePassword, clearSession, getSession } from "@/lib/auth";
+import { changePassword, getSession } from "@/lib/auth";
 import { getOrCreateDeviceId } from "@/lib/device";
 import { getSyncState } from "@/lib/syncState";
 import { restartAutoSync } from "@/lib/autoSync";
