@@ -628,8 +628,12 @@ export default function OrdersPage() {
       </div>
 
       {showForm && activeTab === 'Sales' && (
-        <form onSubmit={handleSaleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div>
+        <form
+          onSubmit={handleSaleSubmit}
+          className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="min-w-0">
             <label className="block text-sm font-medium mb-1">Select Item</label>
             <select
               required
@@ -701,48 +705,65 @@ export default function OrdersPage() {
               ))}
             </select>
           </div>
-          <div>
-            <DualDateField value={saleForm.date} onChange={(ad) => setSaleForm({ ...saleForm, date: ad })} required />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Payment Type</label>
-            <select value={saleForm.paymentType} onChange={e => setSaleForm({...saleForm, paymentType: e.target.value as "Cash"|"Credit"})} className="w-full px-3 py-2 border rounded-md bg-white">
-              <option value="Cash">Cash</option>
-              <option value="Credit">Credit (Update Ledger)</option>
-            </select>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="min-w-0 sm:col-span-2">
+              <label className="block text-sm font-medium mb-1">Date</label>
+              <DualDateField
+                className="min-w-0 max-w-full"
+                value={saleForm.date}
+                onChange={(ad) => setSaleForm({ ...saleForm, date: ad })}
+                required
+              />
+            </div>
+            <div className="min-w-0">
+              <label className="block text-sm font-medium mb-1">Payment Type</label>
+              <select
+                value={saleForm.paymentType}
+                onChange={(e) =>
+                  setSaleForm({ ...saleForm, paymentType: e.target.value as "Cash" | "Credit" })
+                }
+                className="w-full min-w-0 px-3 py-2 border rounded-md bg-white"
+              >
+                <option value="Cash">Cash</option>
+                <option value="Credit">Credit (Update Ledger)</option>
+              </select>
+            </div>
+            {saleForm.paymentType === "Cash" ? (
+              <>
+                <div className="min-w-0">
+                  <label className="block text-sm font-medium mb-1">Payment Mode</label>
+                  <select
+                    value={saleForm.method}
+                    onChange={(e) => setSaleForm({ ...saleForm, method: e.target.value as PaymentMethod })}
+                    className="w-full min-w-0 px-3 py-2 border rounded-md bg-white"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="QR">QR</option>
+                    <option value="BankTransfer">Bank Transfer</option>
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <label className="block text-sm font-medium mb-1">Account</label>
+                  <select
+                    value={saleForm.financialAccountId}
+                    onChange={(e) => setSaleForm({ ...saleForm, financialAccountId: Number(e.target.value) })}
+                    className="w-full min-w-0 px-3 py-2 border rounded-md bg-white"
+                  >
+                    <option value={0}>Select account…</option>
+                    {sortAccountsForPicker(financialAccounts).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.type} — {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : null}
           </div>
-          {saleForm.paymentType === "Cash" ? (
-            <>
-              <div>
-                <label className="block text-sm font-medium mb-1">Payment Mode</label>
-                <select
-                  value={saleForm.method}
-                  onChange={(e) => setSaleForm({ ...saleForm, method: e.target.value as PaymentMethod })}
-                  className="w-full px-3 py-2 border rounded-md bg-white"
-                >
-                  <option value="Cash">Cash</option>
-                  <option value="QR">QR</option>
-                  <option value="BankTransfer">Bank Transfer</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Account</label>
-                <select
-                  value={saleForm.financialAccountId}
-                  onChange={(e) => setSaleForm({ ...saleForm, financialAccountId: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border rounded-md bg-white"
-                >
-                  <option value={0}>Select account…</option>
-                  {sortAccountsForPicker(financialAccounts).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.type} — {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          ) : null}
-          <div className="sm:col-span-2 lg:col-span-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mt-2 border-t pt-4">
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center border-t border-slate-100 pt-4">
             <div className="text-lg font-semibold text-slate-900">
               Total: Rs. {saleTotal}
             </div>

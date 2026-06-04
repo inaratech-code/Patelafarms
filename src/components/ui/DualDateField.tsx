@@ -72,8 +72,8 @@ export function DualDateField({
   const bsYmd = adYmdToBsYmd(adValue);
 
   return (
-    <div className={className}>
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div className={`min-w-0 max-w-full ${className ?? ""}`.trim()}>
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
         <div
           className="inline-flex shrink-0 rounded-md border border-slate-200 p-0.5 bg-slate-50"
           role="group"
@@ -113,7 +113,7 @@ export function DualDateField({
             aria-label="Date (English AD)"
           />
         ) : (
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:flex-none">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
             <input
               type="number"
               min={2000}
