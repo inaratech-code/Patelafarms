@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { enqueueUserRecordOutbox, publishAllCloudLoginsFromDexie } from "@/lib/sync";
+import { enqueueUserRecordOutbox, syncNow } from "@/lib/sync";
 import { ensureFarm, publishFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 
@@ -99,8 +99,7 @@ export async function loginWithPassword(params: { username: string; password: st
       getSupabaseClient();
       await ensureSupabaseAuth();
       await ensureFarm();
-      await publishFarmCloudLogin(user.username, hash);
-      await publishAllCloudLoginsFromDexie();
+      await syncNow();
     } catch {
       /* Supabase not configured or offline */
     }
