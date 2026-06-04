@@ -17,7 +17,7 @@ import { getOrCreateDeviceId } from "@/lib/device";
 import { getSyncState } from "@/lib/syncState";
 import { restartAutoSync } from "@/lib/autoSync";
 import { syncNow, pushOutbox, pullEvents } from "@/lib/sync";
-import { getFarmId, ensureFarm, ensureFarmJoinCode } from "@/lib/farm";
+import { getFarmId } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -46,8 +46,6 @@ export default function SettingsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncPaused, setSyncPaused] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [farmLink, setFarmLink] = useState<{ id: string; joinCode: string } | null>(null);
-  const [farmLinkError, setFarmLinkError] = useState<string>("");
   const [notifyEnabled, setNotifyEnabled] = useState(true);
   const [notifyPermission, setNotifyPermission] = useState<NotificationPermission | "unsupported">("default");
   const [notifyStatus, setNotifyStatus] = useState<string>("");
@@ -57,38 +55,6 @@ export default function SettingsPage() {
       setNotifyEnabled(getBrowserNotificationPrefs().enabled);
       setNotifyPermission(getNotificationPermission());
     });
-  }, []);
-
-  useEffect(() => {
-    const fid = getFarmId();
-    if (!fid) {
-      queueMicrotask(() => setFarmLink(null));
-      return;
-    }
-    void (async () => {
-      try {
-        queueMicrotask(() => setFarmLinkError(""));
-        await ensureSupabaseAuth();
-        await ensureFarm();
-        await ensureFarmJoinCode();
-        const supabase = getSupabaseClient();
-        const { data, error } = await supabase.from("farms").select("id, join_code").eq("id", fid).maybeSingle();
-        if (error) {
-          queueMicrotask(() => setFarmLinkError(error.message));
-          return;
-        }
-        const row = data as { id?: string; join_code?: string | null } | null;
-        if (row?.id) {
-          queueMicrotask(() =>
-            setFarmLink({ id: String(row.id), joinCode: row.join_code ? String(row.join_code) : "" })
-          );
-        }
-      } catch (e: unknown) {
-        queueMicrotask(() =>
-          setFarmLinkError(e instanceof Error ? e.message : "Could not load farm link info.")
-        );
-      }
-    })();
   }, []);
 
   useEffect(() => {
@@ -256,54 +222,6 @@ export default function SettingsPage() {
               and password on the Login page. Keep internet on for the first login on a new device.
             </p>
           </div>
-
-          <details className="rounded-lg border border-slate-200 text-sm open:pb-3">
-            <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-slate-800">
-              Optional: Link a new device with a code
-            </summary>
-            <div className="px-4 pb-3 space-y-3 text-xs text-slate-600 border-t border-slate-200/80 pt-3">
-              {farmLink ? (
-                <>
-                  <div>
-                    <div className="text-slate-500">Farm code</div>
-                    <div className="mt-1 flex gap-2 items-start">
-                      <div className="font-mono text-xs text-slate-900 break-all flex-1">{farmLink.id}</div>
-                      <button
-                        type="button"
-                        className="shrink-0 px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
-                        onClick={() => void navigator.clipboard?.writeText(farmLink.id)}
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-500">Link code</div>
-                    <div className="mt-1 flex gap-2 items-center">
-                      <div className="font-mono text-base font-bold tracking-widest text-slate-900">
-                        {farmLink.joinCode || "—"}
-                      </div>
-                      {farmLink.joinCode ? (
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-white hover:bg-slate-50"
-                          onClick={() => void navigator.clipboard?.writeText(farmLink.joinCode)}
-                        >
-                          Copy
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                </>
-              ) : farmLinkError ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">{farmLinkError}</div>
-              ) : getFarmId() ? (
-                <div className="text-slate-500">Loading…</div>
-              ) : (
-                <div className="text-slate-500">Turn on Sync once, then open this section.</div>
-              )}
-            </div>
-          </details>
 
           <div className="flex flex-wrap gap-2">
             <button

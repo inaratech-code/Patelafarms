@@ -871,12 +871,7 @@ export async function pullAllFarmEvents() {
 /**
  * New device: link farm via cloud password row, pull users/roles, patch password if sync omitted hash.
  */
-export async function bootstrapDeviceLoginFromCloud(params: {
-  username: string;
-  passwordHash: string;
-  joinFarmId?: string;
-  joinCode?: string;
-}) {
+export async function bootstrapDeviceLoginFromCloud(params: { username: string; passwordHash: string }) {
   const username = params.username.trim();
   const passwordHash = params.passwordHash.trim();
   if (!username || !passwordHash) {
@@ -884,13 +879,6 @@ export async function bootstrapDeviceLoginFromCloud(params: {
   }
 
   await ensureSupabaseAuth();
-
-  const joinId = params.joinFarmId?.trim();
-  const joinCode = params.joinCode?.trim();
-  if (joinId && joinCode) {
-    const { joinFarmWithCode } = await import("@/lib/farm");
-    await joinFarmWithCode(joinId, joinCode);
-  }
 
   const { linkFarmWithCredentialsIfPossible } = await import("@/lib/farm");
   const linkedFarmId = await linkFarmWithCredentialsIfPossible(username, passwordHash);
@@ -909,7 +897,7 @@ export async function bootstrapDeviceLoginFromCloud(params: {
   }
 
   if (!user?.id) {
-    return { linked: Boolean(linkedFarmId || joinId), pulled, reason: "no_user" as const };
+    return { linked: Boolean(linkedFarmId), pulled, reason: "no_user" as const };
   }
   if (!user.passwordHash) {
     return { linked: true, pulled, reason: "no_password" as const };

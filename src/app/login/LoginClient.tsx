@@ -16,8 +16,6 @@ export function LoginClient() {
   const users = useLiveQuery(() => db.users.toArray());
 
   const [form, setForm] = useState({ username: "", password: "" });
-  const [joinForm, setJoinForm] = useState({ farmId: "", joinCode: "" });
-  const [showJoin, setShowJoin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
@@ -62,7 +60,7 @@ export function LoginClient() {
         if (msg === "Incorrect password." || msg === "Invalid password") throw err;
         if (msg !== "User not found" && msg !== "User has no password set") throw err;
 
-        // Slow path: link farm in cloud, pull users/roles, then sign in locally.
+        // Slow path: link farm via username + password, pull users, then sign in.
         localStorage.removeItem(FARM_ID_KEY);
         setSyncState({});
         try {
@@ -78,21 +76,16 @@ export function LoginClient() {
         }
 
         const hash = await sha256Base64(password);
-        const bootstrap = await bootstrapDeviceLoginFromCloud({
-          username,
-          passwordHash: hash,
-          joinFarmId: joinForm.farmId.trim() || undefined,
-          joinCode: joinForm.joinCode.trim() || undefined,
-        });
+        const bootstrap = await bootstrapDeviceLoginFromCloud({ username, passwordHash: hash });
 
         if (bootstrap.reason === "link_failed") {
           throw new Error(
-            "Could not link this device to your farm. On your main device: sign in, open Settings → Sync now, then try again with the same username and password. Or use Farm ID + link code below."
+            "Could not sign in on this device. On your main device: sign in, open Settings → Sync now, then use the same username and password here (internet required)."
           );
         }
         if (bootstrap.reason === "no_user") {
           throw new Error(
-            "Farm linked but no users were downloaded. On your main device open Settings → Sync now, then try login again."
+            "Your farm was found but user accounts did not download. On your main device open Settings → Sync now, then try again."
           );
         }
         if (bootstrap.reason === "no_password") {
@@ -125,7 +118,7 @@ export function LoginClient() {
       <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-8 pt-8 pb-6 border-b border-slate-200">
           <div className="text-2xl font-semibold text-slate-900">Sign in</div>
-          <p className="mt-1 text-sm text-slate-500">Enter your credentials to continue</p>
+          <p className="mt-1 text-sm text-slate-500">Use the username and password from User Management</p>
         </div>
 
         <form onSubmit={onSubmit} className="p-8 space-y-4">
@@ -172,48 +165,6 @@ export function LoginClient() {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 text-sm">
-            <button
-              type="button"
-              className="w-full px-4 py-3 text-left font-medium text-slate-800"
-              onClick={() => setShowJoin((v) => !v)}
-            >
-              {showJoin ? "Hide" : "New device?"} Farm ID + link code (optional)
-            </button>
-            {showJoin ? (
-              <div className="px-4 pb-4 space-y-3 border-t border-slate-200/80">
-                <p className="text-xs text-slate-500 pt-2">
-                  Copy these from Settings on your main device, or skip if username/password login works after Sync
-                  there.
-                </p>
-                <div>
-                  <label htmlFor="login-farm-id" className="block text-xs font-medium text-slate-600 mb-1">
-                    Farm ID
-                  </label>
-                  <input
-                    id="login-farm-id"
-                    value={joinForm.farmId}
-                    onChange={(e) => setJoinForm((v) => ({ ...v, farmId: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-md bg-white font-mono text-xs"
-                    autoComplete="off"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="login-join-code" className="block text-xs font-medium text-slate-600 mb-1">
-                    Link code
-                  </label>
-                  <input
-                    id="login-join-code"
-                    value={joinForm.joinCode}
-                    onChange={(e) => setJoinForm((v) => ({ ...v, joinCode: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-md bg-white font-mono tracking-widest"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-            ) : null}
           </div>
 
           {error ? (
