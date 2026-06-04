@@ -13,6 +13,10 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Production (Vercel)
+
+Use **https://patelafarms.vercel.app** (with an **s**). The older URL `patelafarm.vercel.app` (no **s**) was a separate deployment and shows “deployment not found” until Vercel attaches that alias on the next production deploy.
+
 ## Supabase (optional, for multi-device sync)
 
 1. Create a Supabase project.

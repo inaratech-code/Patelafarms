@@ -1,7 +1,17 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "build": {
     "env": {
       "VERCEL_PREVIEW_COMMENTS_ENABLED": "0"
     }
-  }
+  },
+  "alias": ["patelafarm.vercel.app", "patelafarms.vercel.app"],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "patelafarm.vercel.app" }],
+      "destination": "https://patelafarms.vercel.app/:path*",
+      "permanent": true
+    }
+  ]
 }
