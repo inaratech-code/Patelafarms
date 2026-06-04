@@ -218,12 +218,15 @@ async function publishAllFarmCloudLoginsFromDexie() {
 export async function pushOutbox() {
   const supabase = getSupabaseClient();
   await ensureSupabaseAuth();
-  await ensureFarm();
+  let farmId = getFarmId();
+  const pending = await db.outbox.filter((e) => !e.pushedAt).toArray();
+  if (!farmId) {
+    if (pending.length === 0) return { pushed: 0 };
+    farmId = await ensureFarm();
+  }
   await enqueueRoleUserOutboxBackfillOnce();
   await enqueueFarmHealthOutboxBackfillOnce();
   await publishAllFarmCloudLoginsFromDexie();
-  // Dexie rejects .equals(undefined); pending rows have no pushedAt (or empty).
-  const pending = await db.outbox.filter((e) => !e.pushedAt).toArray();
   if (pending.length === 0) return { pushed: 0 };
 
   // Insert in chunks to avoid large payloads.
@@ -272,7 +275,8 @@ export async function pushOutbox() {
 export async function pullEvents() {
   const supabase = getSupabaseClient();
   await ensureSupabaseAuth();
-  const farmId = await ensureFarm();
+  const farmId = getFarmId();
+  if (!farmId) return { pulled: 0 };
   const state = getSyncState();
   let since = state.lastPulledAt;
   let totalPulled = 0;

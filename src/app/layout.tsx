@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
+import { SESSION_GUARD_SCRIPT } from "@/lib/sessionGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,11 +48,7 @@ export default function RootLayout({
     >
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=location.pathname;if(p==="/login"||p==="/users")return;var s=localStorage.getItem("pf.session.v1");if(!s){location.replace("/login?next="+encodeURIComponent(p||"/"));}}catch(e){}})();`,
-          }}
-        />
+        <script dangerouslySetInnerHTML={{ __html: SESSION_GUARD_SCRIPT }} />
       </head>
       <body className="min-h-full bg-background">
         <ServiceWorkerRegistration />

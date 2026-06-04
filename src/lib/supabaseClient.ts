@@ -33,7 +33,15 @@ export async function ensureSupabaseAuth() {
 
   // Anonymous auth provides an authenticated identity for RLS-protected tables.
   const { data: signed, error } = await supabase.auth.signInAnonymously();
-  if (error) throw error;
+  if (error) {
+    const msg = error.message ?? String(error);
+    if (/anonymous|provider|disabled|not enabled/i.test(msg)) {
+      throw new Error(
+        "Anonymous sign-in is disabled in Supabase. Enable Authentication → Providers → Anonymous sign-ins."
+      );
+    }
+    throw error;
+  }
   return signed.session;
 }
 

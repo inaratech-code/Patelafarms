@@ -1,18 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
 import { formatLoginError } from "@/lib/loginErrors";
-import { getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
+import { FARM_ID_KEY, getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
 import { syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
+import { setSyncState } from "@/lib/syncState";
+import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 
+function readNextPath() {
+  if (typeof window === "undefined") return "/";
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && next.startsWith("/") ? next : "/";
+}
+
 export function LoginClient() {
-  const search = useSearchParams();
   const users = useLiveQuery(() => db.users.toArray());
 
   const [form, setForm] = useState({ username: "", password: "" });
@@ -23,8 +29,9 @@ export function LoginClient() {
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
 
   useEffect(() => {
+    clearInvalidSessionStorage();
     const s = getSession();
-    if (s?.userId) window.location.replace("/");
+    if (s?.userId) window.location.replace(readNextPath());
   }, []);
 
   useEffect(() => {
@@ -59,8 +66,20 @@ export function LoginClient() {
         if (msg === "Incorrect password." || msg === "Invalid password") throw err;
         if (msg !== "User not found") throw err;
 
-        // Slow path: only if user isn't on this device, try cloud link + pull, then retry login.
-        await ensureSupabaseAuth();
+        // Slow path: cloud link + pull on a new device (drop stale farm id first).
+        localStorage.removeItem(FARM_ID_KEY);
+        setSyncState({});
+        try {
+          await ensureSupabaseAuth();
+        } catch (authErr: unknown) {
+          const authMsg = authErr instanceof Error ? authErr.message : String(authErr);
+          if (authMsg.toLowerCase().includes("anonymous")) {
+            throw new Error(
+              "Cloud sign-in is unavailable. In Supabase enable Authentication → Providers → Anonymous sign-ins, then try again."
+            );
+          }
+          throw authErr;
+        }
         const hash = await sha256Base64(password);
         let linkedFarmId: string | null = null;
         try {
@@ -73,12 +92,11 @@ export function LoginClient() {
         }
         await loginWithPassword({ username, password });
       }
-      const next = search.get("next") ?? "/";
-      window.location.replace(next);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Login failed";
-        setError(formatLoginError(msg, hasUsers));
-      } finally {
+      window.location.replace(readNextPath());
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Login failed";
+      setError(formatLoginError(msg, hasUsers));
+    } finally {
       setIsWorking(false);
     }
   };

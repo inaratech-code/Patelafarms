@@ -28,8 +28,11 @@ export function ServiceWorkerRegistration() {
         };
         const interval = window.setInterval(doUpdate, 5 * 60 * 1000); // 5 min
 
+        let reloading = false;
         const onControllerChange = () => {
-          // New version activated and controlling this page → hard reload to pick up new assets.
+          // New version activated — reload once (avoid reload loops on iOS Safari).
+          if (reloading) return;
+          reloading = true;
           window.location.reload();
         };
         navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);

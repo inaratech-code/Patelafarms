@@ -13,5 +13,9 @@ export function formatLoginError(message: string, hasLocalUsers: boolean): strin
   if (message === "Password is required" || message === "Username is required") {
     return message;
   }
+  if (/anonymous sign-in is disabled/i.test(message)) return message;
+  if (/supabase env vars missing/i.test(message)) {
+    return "Server sync is not configured. Contact support, or sign in on a device that already has your account.";
+  }
   return message;
 }

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { clearSession, getSession, LAST_ACTIVE_KEY, type Session } from "@/lib/auth";
+import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
 import { FarmHealthSoundBridge } from "@/components/notifications/FarmHealthSoundBridge";
 import { PushAlertsWatcher } from "@/components/notifications/PushAlertsWatcher";
 import { startAutoSync } from "@/lib/autoSync";
@@ -25,6 +26,7 @@ export function AppShell(props: { children: React.ReactNode }) {
 
   // Read session only on the client (avoids SSR/hydration treating everyone as logged out).
   useEffect(() => {
+    clearInvalidSessionStorage();
     refreshSession();
     setAuthReady(true);
   }, [pathname, refreshSession]);
@@ -145,14 +147,28 @@ export function AppShell(props: { children: React.ReactNode }) {
     return () => window.clearInterval(id);
   }, [isLoginRoute]);
 
-  if (!authReady && !isLoginRoute) return null;
+  if (!authReady && !isLoginRoute) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        <p className="text-sm text-slate-500">Loading…</p>
+      </div>
+    );
+  }
 
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;
 
   const authed = Boolean(session?.userId);
-  // Keep the shell blank while redirecting unauthenticated users (avoids dashboard flash).
-  if (!authed && !isBootstrapAllowed) return null;
+  // Keep a visible shell while redirecting unauthenticated users (avoids blank screen on iOS).
+  if (!authed && !isBootstrapAllowed) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        <p className="text-sm text-slate-500">Redirecting to sign in…</p>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>

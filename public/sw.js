@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_NAME = "patela-farms-pwa-v5";
+const CACHE_NAME = "patela-farms-pwa-v6";
 const OFFLINE_URL = "/offline";
 const OFFLINE_HTML = "/offline.html";
 const FARM_HEALTH_ALERT_SOUND = "/sounds/farm-health-alert.wav";
@@ -153,21 +153,17 @@ self.addEventListener("fetch", (event) => {
   // Only handle same-origin requests.
   if (url.origin !== self.location.origin) return;
 
-  // For navigation requests, try network first, fallback to cache.
+  // HTML navigations: network-only (avoid stale deploy shells that break iOS Safari).
   if (req.mode === "navigate") {
     event.respondWith(
       (async () => {
         try {
-          const fresh = await fetch(req);
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(req, fresh.clone());
-          return fresh;
+          return await fetch(req);
         } catch {
           return (
-            (await caches.match(req)) ||
             (await caches.match(OFFLINE_HTML)) ||
             (await caches.match(OFFLINE_URL)) ||
-            (await caches.match("/"))
+            new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } })
           );
         }
       })(),
