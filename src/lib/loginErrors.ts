@@ -5,8 +5,10 @@ export function formatLoginError(message: string, hasLocalUsers: boolean): strin
   if (message === "User not found") {
     return hasLocalUsers
       ? "Incorrect username or password."
-      : "Incorrect username or password. On a new device, use the same credentials as your main device after Settings → Sync once, or join with a farm code.";
+      : "Incorrect username or password. On your main device: sign in → Settings → Sync now, then try again here (internet required).";
   }
+  if (/could not link this device/i.test(message)) return message;
+  if (/farm linked but no users/i.test(message)) return message;
   if (message === "User has no password set") {
     return "This account has no password yet. Ask an administrator to set one from User Management.";
   }

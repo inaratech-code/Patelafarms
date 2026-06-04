@@ -5,8 +5,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { DASHBOARD_PATH, loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
 import { formatLoginError } from "@/lib/loginErrors";
-import { FARM_ID_KEY, getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
-import { syncNow } from "@/lib/sync";
+import { FARM_ID_KEY, getFarmId } from "@/lib/farm";
+import { bootstrapDeviceLoginFromCloud, syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
 import { setSyncState } from "@/lib/syncState";
 import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
@@ -16,6 +16,8 @@ export function LoginClient() {
   const users = useLiveQuery(() => db.users.toArray());
 
   const [form, setForm] = useState({ username: "", password: "" });
+  const [joinForm, setJoinForm] = useState({ farmId: "", joinCode: "" });
+  const [showJoin, setShowJoin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
@@ -58,9 +60,9 @@ export function LoginClient() {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Login failed";
         if (msg === "Incorrect password." || msg === "Invalid password") throw err;
-        if (msg !== "User not found") throw err;
+        if (msg !== "User not found" && msg !== "User has no password set") throw err;
 
-        // Slow path: cloud link + pull on a new device (drop stale farm id first).
+        // Slow path: link farm in cloud, pull users/roles, then sign in locally.
         localStorage.removeItem(FARM_ID_KEY);
         setSyncState({});
         try {
@@ -74,16 +76,29 @@ export function LoginClient() {
           }
           throw authErr;
         }
+
         const hash = await sha256Base64(password);
-        let linkedFarmId: string | null = null;
-        try {
-          linkedFarmId = await linkFarmWithCredentialsIfPossible(username, hash);
-        } catch (e) {
-          console.warn("Credential link:", e);
+        const bootstrap = await bootstrapDeviceLoginFromCloud({
+          username,
+          passwordHash: hash,
+          joinFarmId: joinForm.farmId.trim() || undefined,
+          joinCode: joinForm.joinCode.trim() || undefined,
+        });
+
+        if (bootstrap.reason === "link_failed") {
+          throw new Error(
+            "Could not link this device to your farm. On your main device: sign in, open Settings → Sync now, then try again with the same username and password. Or use Farm ID + link code below."
+          );
         }
-        if (linkedFarmId) {
-          await syncNow();
+        if (bootstrap.reason === "no_user") {
+          throw new Error(
+            "Farm linked but no users were downloaded. On your main device open Settings → Sync now, then try login again."
+          );
         }
+        if (bootstrap.reason === "no_password") {
+          throw new Error("User has no password set");
+        }
+
         await loginWithPassword({ username, password });
       }
       window.location.replace(DASHBOARD_PATH);
@@ -157,6 +172,48 @@ export function LoginClient() {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 text-sm">
+            <button
+              type="button"
+              className="w-full px-4 py-3 text-left font-medium text-slate-800"
+              onClick={() => setShowJoin((v) => !v)}
+            >
+              {showJoin ? "Hide" : "New device?"} Farm ID + link code (optional)
+            </button>
+            {showJoin ? (
+              <div className="px-4 pb-4 space-y-3 border-t border-slate-200/80">
+                <p className="text-xs text-slate-500 pt-2">
+                  Copy these from Settings on your main device, or skip if username/password login works after Sync
+                  there.
+                </p>
+                <div>
+                  <label htmlFor="login-farm-id" className="block text-xs font-medium text-slate-600 mb-1">
+                    Farm ID
+                  </label>
+                  <input
+                    id="login-farm-id"
+                    value={joinForm.farmId}
+                    onChange={(e) => setJoinForm((v) => ({ ...v, farmId: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md bg-white font-mono text-xs"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="login-join-code" className="block text-xs font-medium text-slate-600 mb-1">
+                    Link code
+                  </label>
+                  <input
+                    id="login-join-code"
+                    value={joinForm.joinCode}
+                    onChange={(e) => setJoinForm((v) => ({ ...v, joinCode: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md bg-white font-mono tracking-widest"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {error ? (

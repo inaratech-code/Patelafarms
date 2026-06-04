@@ -69,7 +69,6 @@ begin
   insert into public.farm_cloud_logins (username_norm, farm_id, password_hash, updated_at)
   values (n, p_farm_id, trim(p_password_hash), now())
   on conflict (username_norm) do update set
-    farm_id = excluded.farm_id,
     password_hash = excluded.password_hash,
     updated_at = now()
   where farm_cloud_logins.farm_id = excluded.farm_id;

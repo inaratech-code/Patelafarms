@@ -180,6 +180,20 @@ function toSupabaseRow(e: SyncEvent) {
   };
 }
 
+const APPLY_ORDER: Record<string, number> = {
+  "role.record": 0,
+  "user.record": 1,
+};
+
+function sortEventsForApply(events: SyncEvent[]): SyncEvent[] {
+  return [...events].sort((a, b) => {
+    const oa = APPLY_ORDER[a.entityType] ?? 50;
+    const ob = APPLY_ORDER[b.entityType] ?? 50;
+    if (oa !== ob) return oa - ob;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
 function fromSupabaseRow(r: unknown): SyncEvent {
   const row = asRecord(r) ?? {};
   return {
@@ -194,7 +208,7 @@ function fromSupabaseRow(r: unknown): SyncEvent {
 }
 
 /** Push Dexie password hashes to farm_cloud_logins so new devices can sign in with the same password. */
-async function publishAllFarmCloudLoginsFromDexie() {
+export async function publishAllCloudLoginsFromDexie() {
   try {
     const farmId = getFarmId();
     if (!farmId) return;
@@ -226,7 +240,7 @@ export async function pushOutbox() {
   }
   await enqueueRoleUserOutboxBackfillOnce();
   await enqueueFarmHealthOutboxBackfillOnce();
-  await publishAllFarmCloudLoginsFromDexie();
+  await publishAllCloudLoginsFromDexie();
   if (pending.length === 0) return { pushed: 0 };
 
   // Insert in chunks to avoid large payloads.
@@ -296,7 +310,7 @@ export async function pullEvents() {
     const rows = (data ?? []).map(fromSupabaseRow);
     if (rows.length === 0) break;
 
-    await applyEvents(rows);
+    await applyEvents(sortEventsForApply(rows));
     totalPulled += rows.length;
     since = rows[rows.length - 1].createdAt;
     setSyncState({ lastPulledAt: since });
@@ -841,5 +855,66 @@ export async function syncNow() {
   const push = await pushOutbox();
   const pull = await pullEvents();
   return { ...push, ...pull };
+}
+
+/** Pull all farm events (pages until empty). Used when a new device links to a farm. */
+export async function pullAllFarmEvents() {
+  let total = 0;
+  for (let page = 0; page < 40; page++) {
+    const { pulled } = await pullEvents();
+    total += pulled;
+    if (pulled === 0) break;
+  }
+  return { pulled: total };
+}
+
+/**
+ * New device: link farm via cloud password row, pull users/roles, patch password if sync omitted hash.
+ */
+export async function bootstrapDeviceLoginFromCloud(params: {
+  username: string;
+  passwordHash: string;
+  joinFarmId?: string;
+  joinCode?: string;
+}) {
+  const username = params.username.trim();
+  const passwordHash = params.passwordHash.trim();
+  if (!username || !passwordHash) {
+    return { linked: false, pulled: 0, reason: "invalid" as const };
+  }
+
+  await ensureSupabaseAuth();
+
+  const joinId = params.joinFarmId?.trim();
+  const joinCode = params.joinCode?.trim();
+  if (joinId && joinCode) {
+    const { joinFarmWithCode } = await import("@/lib/farm");
+    await joinFarmWithCode(joinId, joinCode);
+  }
+
+  const { linkFarmWithCredentialsIfPossible } = await import("@/lib/farm");
+  const linkedFarmId = await linkFarmWithCredentialsIfPossible(username, passwordHash);
+
+  if (!getFarmId()) {
+    return { linked: false, pulled: 0, reason: "link_failed" as const };
+  }
+
+  const { pulled } = await pullAllFarmEvents();
+
+  const un = username.toLowerCase();
+  let user = (await db.users.toArray()).find((u) => u.username.trim().toLowerCase() === un);
+  if (user?.id && !user.passwordHash) {
+    await db.users.update(user.id, { passwordHash });
+    user = (await db.users.get(user.id)) ?? user;
+  }
+
+  if (!user?.id) {
+    return { linked: Boolean(linkedFarmId || joinId), pulled, reason: "no_user" as const };
+  }
+  if (!user.passwordHash) {
+    return { linked: true, pulled, reason: "no_password" as const };
+  }
+
+  return { linked: true, pulled, reason: "ok" as const };
 }
 
