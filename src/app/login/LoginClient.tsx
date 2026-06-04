@@ -80,7 +80,7 @@ export function LoginClient() {
 
         if (bootstrap.reason === "link_failed") {
           throw new Error(
-            "Could not sign in on this device. On your main device: sign in, open Settings → Sync now, then use the same username and password here (internet required)."
+            "This username and password are not registered in the cloud yet. On your main device: sign in with the same password, open Settings → Sync now, then try here again."
           );
         }
         if (bootstrap.reason === "no_user") {

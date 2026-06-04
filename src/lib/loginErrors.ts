@@ -7,6 +7,8 @@ export function formatLoginError(message: string, hasLocalUsers: boolean): strin
       ? "Incorrect username or password."
       : "Incorrect username or password. On your main device: sign in → Settings → Sync now, then try again here (internet required).";
   }
+  if (/not registered in the cloud/i.test(message)) return message;
+  if (/cloud login is not set up/i.test(message)) return message;
   if (/could not link this device/i.test(message)) return message;
   if (/farm linked but no users/i.test(message)) return message;
   if (message === "User has no password set") {

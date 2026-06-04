@@ -209,9 +209,12 @@ function fromSupabaseRow(r: unknown): SyncEvent {
 
 /** Push Dexie password hashes to farm_cloud_logins so new devices can sign in with the same password. */
 export async function publishAllCloudLoginsFromDexie() {
+  const result = { published: 0, failed: [] as string[] };
   try {
     const farmId = getFarmId();
-    if (!farmId) return;
+    if (!farmId) return result;
+    const { ensureFarm } = await import("@/lib/farm");
+    await ensureFarm();
     const supabase = getSupabaseClient();
     for (const u of await db.users.toArray()) {
       const name = u.username?.trim();
@@ -222,11 +225,17 @@ export async function publishAllCloudLoginsFromDexie() {
         p_username: name,
         p_password_hash: h,
       });
-      if (error) console.warn("upsert_farm_cloud_login", name, error.message);
+      if (error) {
+        result.failed.push(`${name}: ${error.message}`);
+        console.warn("upsert_farm_cloud_login", name, error.message);
+      } else {
+        result.published += 1;
+      }
     }
-  } catch {
-    /* offline or RPC not deployed */
+  } catch (e) {
+    result.failed.push(e instanceof Error ? e.message : String(e));
   }
+  return result;
 }
 
 export async function pushOutbox() {
@@ -852,6 +861,12 @@ export async function applyEvents(events: SyncEvent[]) {
 }
 
 export async function syncNow() {
+  await ensureSupabaseAuth();
+  try {
+    if (getFarmId()) await publishAllCloudLoginsFromDexie();
+  } catch {
+    /* farm / Supabase not ready */
+  }
   const push = await pushOutbox();
   const pull = await pullEvents();
   return { ...push, ...pull };

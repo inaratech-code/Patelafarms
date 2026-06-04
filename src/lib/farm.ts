@@ -181,7 +181,14 @@ export async function linkFarmWithCredentialsIfPossible(
     p_password_hash: passwordHashB64.trim(),
   });
   if (error) {
-    console.warn("link_farm_with_credentials:", error.message);
+    const msg = error.message ?? String(error);
+    const code = (error as { code?: string }).code;
+    console.warn("link_farm_with_credentials:", msg);
+    if (code === "42883" || /does not exist/i.test(msg)) {
+      throw new Error(
+        "Cloud login is not set up in Supabase. Run supabase/farm_cloud_logins.sql in the SQL Editor, then try again."
+      );
+    }
     return null;
   }
   if (data == null) return null;

@@ -16,7 +16,7 @@ import { changePassword, clearSession, getSession } from "@/lib/auth";
 import { getOrCreateDeviceId } from "@/lib/device";
 import { getSyncState } from "@/lib/syncState";
 import { restartAutoSync } from "@/lib/autoSync";
-import { syncNow, pushOutbox, pullEvents } from "@/lib/sync";
+import { syncNow, pushOutbox, pullEvents, publishAllCloudLoginsFromDexie } from "@/lib/sync";
 import { getFarmId } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
@@ -121,8 +121,15 @@ export default function SettingsPage() {
         const r = await pullEvents();
         setSyncStatus(`Pulled ${r.pulled} event(s).`);
       } else {
+        const cloud = await publishAllCloudLoginsFromDexie();
         const r = await syncNow();
-        setSyncStatus(`Pushed ${r.pushed} · Pulled ${r.pulled}`);
+        const cloudNote =
+          cloud.published > 0
+            ? ` · ${cloud.published} login(s) registered for other devices`
+            : cloud.failed.length
+              ? ` · login register failed: ${cloud.failed[0]}`
+              : "";
+        setSyncStatus(`Pushed ${r.pushed} · Pulled ${r.pulled}${cloudNote}`);
       }
     } catch (e: unknown) {
       console.error(e);
