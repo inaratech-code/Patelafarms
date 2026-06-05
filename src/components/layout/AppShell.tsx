@@ -71,6 +71,8 @@ export function AppShell(props: { children: React.ReactNode }) {
     authed &&
     !isLoginRoute &&
     !isBootstrapAllowed &&
+    currentUser !== undefined &&
+    role !== undefined &&
     (currentUser === null || role === null || currentUser.roleId !== session?.roleId);
 
   // Auto logout after 1 hour of inactivity.
