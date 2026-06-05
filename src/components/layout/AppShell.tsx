@@ -55,10 +55,23 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
+  const currentUser = useLiveQuery(async () => {
+    const userId = session?.userId ?? 0;
+    if (!userId) return null;
+    return (await db.users.get(userId)) ?? null;
+  }, [session?.userId]);
 
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
   const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
+  const authed = Boolean(session?.userId);
+  const authRecordLoading =
+    authed && !isLoginRoute && !isBootstrapAllowed && (currentUser === undefined || role === undefined);
+  const authRecordMissing =
+    authed &&
+    !isLoginRoute &&
+    !isBootstrapAllowed &&
+    (currentUser === null || role === null || currentUser.roleId !== session?.roleId);
 
   // Auto logout after 1 hour of inactivity.
   useEffect(() => {
@@ -123,17 +136,23 @@ export function AppShell(props: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!authReady) return;
-    const authed = Boolean(session?.userId);
     if (!isLoginRoute && !isBootstrapAllowed && !authed) {
       window.location.replace("/login");
     }
-  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, session?.userId]);
+  }, [authReady, authed, isBootstrapAllowed, isLoginRoute]);
+
+  useEffect(() => {
+    if (!authReady || !authRecordMissing) return;
+    clearSession();
+    localStorage.removeItem(LAST_ACTIVE_KEY);
+    window.location.replace("/login");
+  }, [authReady, authRecordMissing]);
 
   useEffect(() => {
     if (!authReady) return;
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
-    if (session?.roleId && role == null) return;
+    if (authRecordLoading || authRecordMissing) return;
     const path = pathname || "/";
     if (path === DASHBOARD_PATH && sessionStorage.getItem(POST_LOGIN_HOME_KEY) === "1") {
       sessionStorage.removeItem(POST_LOGIN_HOME_KEY);
@@ -144,7 +163,16 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!canAccessPath(perms, path)) {
       if (target !== path) window.location.replace(target);
     }
-  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
+  }, [
+    authReady,
+    authRecordLoading,
+    authRecordMissing,
+    isBootstrapAllowed,
+    isLoginRoute,
+    pathname,
+    role,
+    session?.userId,
+  ]);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -171,13 +199,21 @@ export function AppShell(props: { children: React.ReactNode }) {
   // Login page should not show sidebar/header.
   if (isLoginRoute) return <>{props.children}</>;
 
-  const authed = Boolean(session?.userId);
   // Keep a visible shell while redirecting unauthenticated users (avoids blank screen on iOS).
   if (!authed && !isBootstrapAllowed) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
         <p className="text-sm text-slate-500">Redirecting to sign in…</p>
+      </div>
+    );
+  }
+
+  if (authRecordLoading || authRecordMissing) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        <p className="text-sm text-slate-500">Checking access…</p>
       </div>
     );
   }
