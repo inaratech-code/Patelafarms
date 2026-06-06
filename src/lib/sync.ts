@@ -24,7 +24,7 @@ import {
 import { enqueueFarmHealthOutboxBackfillOnce } from "@/lib/farmHealthSync";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getSyncState, setSyncState } from "@/lib/syncState";
-import { ensureFarm, getFarmId } from "@/lib/farm";
+import { ensureFarm, getFarmId, setFarmId } from "@/lib/farm";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 import { recomputeLedgerBalances } from "@/lib/ledger";
@@ -896,17 +896,22 @@ export async function bootstrapDeviceLoginFromCloud(params: { username: string; 
   await ensureSupabaseAuth();
 
   const { linkFarmWithCredentialsIfPossible } = await import("@/lib/farm");
+  const previousFarmId = getFarmId();
   const linkedFarmId = await linkFarmWithCredentialsIfPossible(username, passwordHash);
 
-  if (!getFarmId()) {
+  if (!linkedFarmId) {
     return { linked: false, pulled: 0, reason: "link_failed" as const };
+  }
+  if (previousFarmId && previousFarmId !== linkedFarmId) {
+    setFarmId(previousFarmId);
+    return { linked: false, pulled: 0, reason: "farm_mismatch" as const };
   }
 
   const { pulled } = await pullAllFarmEvents();
 
   const un = username.toLowerCase();
   let user = (await db.users.toArray()).find((u) => u.username.trim().toLowerCase() === un);
-  if (user?.id && !user.passwordHash) {
+  if (user?.id && user.passwordHash !== passwordHash) {
     await db.users.update(user.id, { passwordHash });
     user = (await db.users.get(user.id)) ?? user;
   }

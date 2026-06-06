@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { enqueueUserRecordOutbox, publishAllCloudLoginsFromDexie } from "@/lib/sync";
-import { ensureFarm, publishFarmCloudLogin } from "@/lib/farm";
+import { getFarmId, linkFarmWithCredentialsIfPossible, publishFarmCloudLogin } from "@/lib/farm";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 
 export const SESSION_KEY = "pf.session.v1";
@@ -98,7 +98,10 @@ export async function loginWithPassword(params: { username: string; password: st
     try {
       getSupabaseClient();
       await ensureSupabaseAuth();
-      await ensureFarm();
+      if (!getFarmId()) {
+        await linkFarmWithCredentialsIfPossible(user.username, hash);
+      }
+      if (!getFarmId()) return;
       await publishFarmCloudLogin(user.username, hash);
       await publishAllCloudLoginsFromDexie();
     } catch {
