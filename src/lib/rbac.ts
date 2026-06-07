@@ -143,13 +143,38 @@ export function requiredPermissionsForPath(pathname: string): PermissionId[] {
   return [];
 }
 
+const DEFAULT_ROUTES: Array<[PermissionId, string]> = [
+  ["dashboard", "/"],
+  ["transactions.sales", "/orders"],
+  ["transactions.purchases", "/purchases"],
+  ["transactions.overview", "/transactions"],
+  ["inventory.items", "/inventory"],
+  ["accounts.ledger", "/ledger"],
+  ["accounts.payments", "/payments"],
+  ["outstanding", "/outstanding"],
+  ["reports", "/reports"],
+  ["inventory.consumption", "/consumption"],
+  ["inventory.stockMovement", "/stock-movement"],
+  ["inventory.lossWastage", "/loss-wastage"],
+  ["transactions.expenses", "/expenses"],
+  ["accounts.dayBook", "/daybook"],
+  ["accounts.accounts", "/accounts"],
+  ["farmHealth.vaccines", "/farm-health/vaccines"],
+  ["farmHealth.doseSchedule", "/farm-health/dose-schedule"],
+  ["farmHealth.healthLogs", "/farm-health/health-logs"],
+  ["people.customers", "/customers"],
+  ["people.suppliers", "/suppliers"],
+  ["people.workers", "/workers"],
+  ["people.users", "/users"],
+  ["alerts", "/alerts"],
+  ["settings", "/settings"],
+];
+
 export function pickDefaultRoute(perms: Set<PermissionId>): string {
-  if (perms.has("*") || perms.has("dashboard")) return "/";
-  if (perms.has("transactions.sales")) return "/orders";
-  if (perms.has("inventory.items")) return "/inventory";
-  if (perms.has("accounts.ledger")) return "/ledger";
-  if (perms.has("reports")) return "/reports";
-  if (perms.has("settings")) return "/settings";
+  if (perms.has("*")) return "/";
+  for (const [permission, route] of DEFAULT_ROUTES) {
+    if (perms.has(permission)) return route;
+  }
   return "/";
 }
 

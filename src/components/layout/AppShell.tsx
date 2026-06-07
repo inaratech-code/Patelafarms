@@ -9,10 +9,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import {
   clearSession,
-  DASHBOARD_PATH,
   getSession,
   LAST_ACTIVE_KEY,
-  POST_LOGIN_HOME_KEY,
   type Session,
 } from "@/lib/auth";
 import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
@@ -55,10 +53,17 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!roleId) return null;
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
+  const isRoleLoading = Boolean(session?.roleId) && role === undefined;
+  const isRoleMissing = Boolean(session?.roleId) && role === null;
 
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
   const isBootstrapAllowed = !hasUsers && (pathname === "/users" || pathname === "/login");
+  const currentPath = pathname || "/";
+  const activePermissions = useMemo(() => {
+    if (!session?.userId || isRoleLoading || isRoleMissing) return null;
+    return normalizePermissions(role?.permissions as string[] | undefined);
+  }, [isRoleLoading, isRoleMissing, role, session?.userId]);
 
   // Auto logout after 1 hour of inactivity.
   useEffect(() => {
@@ -133,18 +138,23 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!authReady) return;
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
-    if (session?.roleId && role == null) return;
-    const path = pathname || "/";
-    if (path === DASHBOARD_PATH && sessionStorage.getItem(POST_LOGIN_HOME_KEY) === "1") {
-      sessionStorage.removeItem(POST_LOGIN_HOME_KEY);
+    if (isRoleLoading) return;
+    if (isRoleMissing) {
+      clearSession();
+      window.location.replace("/login");
       return;
     }
-    const perms = normalizePermissions(role?.permissions as string[] | undefined);
-    const target = pickDefaultRoute(perms);
-    if (!canAccessPath(perms, path)) {
-      if (target !== path) window.location.replace(target);
+    if (!activePermissions) return;
+    const target = pickDefaultRoute(activePermissions);
+    if (!canAccessPath(activePermissions, currentPath)) {
+      if (target !== currentPath && canAccessPath(activePermissions, target)) {
+        window.location.replace(target);
+        return;
+      }
+      clearSession();
+      window.location.replace("/login");
     }
-  }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
+  }, [activePermissions, authReady, currentPath, isBootstrapAllowed, isLoginRoute, isRoleLoading, isRoleMissing, session?.userId]);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -178,6 +188,33 @@ export function AppShell(props: { children: React.ReactNode }) {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
         <p className="text-sm text-slate-500">Redirecting to sign in…</p>
+      </div>
+    );
+  }
+
+  if (authed && isRoleLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        <p className="text-sm text-slate-500">Loading permissions…</p>
+      </div>
+    );
+  }
+
+  if (authed && isRoleMissing) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        <p className="text-sm text-slate-500">Redirecting to sign in…</p>
+      </div>
+    );
+  }
+
+  if (authed && !isBootstrapAllowed && activePermissions && !canAccessPath(activePermissions, currentPath)) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        <p className="text-sm text-slate-500">Redirecting…</p>
       </div>
     );
   }
