@@ -53,9 +53,10 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!roleId) return { roleId, role: null };
     return { roleId, role: (await db.roles.get(roleId)) ?? null };
   }, [session?.roleId]);
+  const sessionRoleId = session?.roleId ?? 0;
   const role = roleResult?.role ?? null;
-  const isRoleLoading = Boolean(session?.roleId) && (roleResult === undefined || roleResult.roleId !== session.roleId);
-  const isRoleMissing = Boolean(session?.roleId) && roleResult?.roleId === session.roleId && roleResult.role === null;
+  const isRoleLoading = Boolean(sessionRoleId) && (roleResult === undefined || roleResult.roleId !== sessionRoleId);
+  const isRoleMissing = Boolean(sessionRoleId) && roleResult?.roleId === sessionRoleId && roleResult.role === null;
 
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
