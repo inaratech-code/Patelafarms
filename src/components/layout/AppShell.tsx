@@ -48,13 +48,14 @@ export function AppShell(props: { children: React.ReactNode }) {
       window.removeEventListener("storage", onStorage);
     };
   }, [refreshSession]);
-  const role = useLiveQuery(async () => {
+  const roleResult = useLiveQuery(async () => {
     const roleId = session?.roleId ?? 0;
-    if (!roleId) return null;
-    return (await db.roles.get(roleId)) ?? null;
+    if (!roleId) return { roleId, role: null };
+    return { roleId, role: (await db.roles.get(roleId)) ?? null };
   }, [session?.roleId]);
-  const isRoleLoading = Boolean(session?.roleId) && role === undefined;
-  const isRoleMissing = Boolean(session?.roleId) && role === null;
+  const role = roleResult?.role ?? null;
+  const isRoleLoading = Boolean(session?.roleId) && (roleResult === undefined || roleResult.roleId !== session.roleId);
+  const isRoleMissing = Boolean(session?.roleId) && roleResult?.roleId === session.roleId && roleResult.role === null;
 
   const hasUsers = useMemo(() => (users ? users.length > 0 : false), [users]);
   const isLoginRoute = pathname === "/login";
