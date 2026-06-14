@@ -5,10 +5,9 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { DASHBOARD_PATH, loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
 import { formatLoginError } from "@/lib/loginErrors";
-import { FARM_ID_KEY, getFarmId } from "@/lib/farm";
+import { getFarmId } from "@/lib/farm";
 import { bootstrapDeviceLoginFromCloud, syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
-import { setSyncState } from "@/lib/syncState";
 import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 
@@ -57,12 +56,15 @@ export function LoginClient() {
         await loginWithPassword({ username, password });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Login failed";
-        if (msg === "Incorrect password." || msg === "Invalid password") throw err;
-        if (msg !== "User not found" && msg !== "User has no password set") throw err;
+        const canTryCloud =
+          msg === "Incorrect password." ||
+          msg === "Invalid password" ||
+          msg === "User not found" ||
+          msg === "User has no password set";
+        if (!canTryCloud) throw err;
 
         // Slow path: link farm via username + password, pull users, then sign in.
-        localStorage.removeItem(FARM_ID_KEY);
-        setSyncState({});
+        // Preserve any existing farm link until the cloud credential check succeeds.
         try {
           await ensureSupabaseAuth();
         } catch (authErr: unknown) {
@@ -79,6 +81,7 @@ export function LoginClient() {
         const bootstrap = await bootstrapDeviceLoginFromCloud({ username, passwordHash: hash });
 
         if (bootstrap.reason === "link_failed") {
+          if (msg === "Incorrect password." || msg === "Invalid password") throw err;
           throw new Error(
             "This username and password are not registered in the cloud yet. On your main device: sign in with the same password, open Settings → Sync now, then try here again."
           );

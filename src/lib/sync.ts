@@ -24,7 +24,7 @@ import {
 import { enqueueFarmHealthOutboxBackfillOnce } from "@/lib/farmHealthSync";
 import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 import { getSyncState, setSyncState } from "@/lib/syncState";
-import { ensureFarm, getFarmId } from "@/lib/farm";
+import { ensureFarm, getFarmId, linkFarmWithCredentialsIfPossible } from "@/lib/farm";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 import { recomputeLedgerBalances } from "@/lib/ledger";
@@ -213,7 +213,6 @@ export async function publishAllCloudLoginsFromDexie() {
   try {
     const farmId = getFarmId();
     if (!farmId) return result;
-    const { ensureFarm } = await import("@/lib/farm");
     await ensureFarm();
     const supabase = getSupabaseClient();
     for (const u of await db.users.toArray()) {
@@ -895,10 +894,9 @@ export async function bootstrapDeviceLoginFromCloud(params: { username: string; 
 
   await ensureSupabaseAuth();
 
-  const { linkFarmWithCredentialsIfPossible } = await import("@/lib/farm");
   const linkedFarmId = await linkFarmWithCredentialsIfPossible(username, passwordHash);
 
-  if (!getFarmId()) {
+  if (!linkedFarmId) {
     return { linked: false, pulled: 0, reason: "link_failed" as const };
   }
 
@@ -906,7 +904,7 @@ export async function bootstrapDeviceLoginFromCloud(params: { username: string; 
 
   const un = username.toLowerCase();
   let user = (await db.users.toArray()).find((u) => u.username.trim().toLowerCase() === un);
-  if (user?.id && !user.passwordHash) {
+  if (user?.id && user.passwordHash !== passwordHash) {
     await db.users.update(user.id, { passwordHash });
     user = (await db.users.get(user.id)) ?? user;
   }
