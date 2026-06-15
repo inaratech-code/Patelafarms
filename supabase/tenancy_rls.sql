@@ -90,7 +90,11 @@ with check (
   )
 );
 
--- Events: only members can read/write within their farm
+-- Events: only members can read/write within their farm.
+-- Drop the permissive dev policies from events.sql; RLS policies are ORed.
+drop policy if exists "events_read_all" on public.events;
+drop policy if exists "events_insert_all" on public.events;
+
 drop policy if exists events_select_farm on public.events;
 create policy events_select_farm on public.events
 as permissive

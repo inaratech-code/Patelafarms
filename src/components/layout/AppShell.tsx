@@ -9,10 +9,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import {
   clearSession,
-  DASHBOARD_PATH,
   getSession,
   LAST_ACTIVE_KEY,
-  POST_LOGIN_HOME_KEY,
   type Session,
 } from "@/lib/auth";
 import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
@@ -135,10 +133,6 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!session?.userId) return;
     if (session?.roleId && role == null) return;
     const path = pathname || "/";
-    if (path === DASHBOARD_PATH && sessionStorage.getItem(POST_LOGIN_HOME_KEY) === "1") {
-      sessionStorage.removeItem(POST_LOGIN_HOME_KEY);
-      return;
-    }
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     const target = pickDefaultRoute(perms);
     if (!canAccessPath(perms, path)) {

@@ -1,4 +1,4 @@
-import { db, type DayBookEntry, type LedgerAccount, type Payment } from "@/lib/db";
+import { db, type DayBookEntry, type FinancialAccount, type LedgerAccount, type Payment } from "@/lib/db";
 import { addLedgerEntry } from "@/lib/ledger";
 import { getOrCreateDefaultCashAccountId, type PaymentMethod } from "@/lib/accounts";
 import { datePairFromAdYmd, timePairFromAdYmd } from "@/lib/nepaliDate";
@@ -25,12 +25,22 @@ export async function postPayment(params: {
   const { time, timeBs } = timePairFromAdYmd(params.dateYYYYMMDD);
   const note = params.note?.trim();
 
-  const party = await db.ledgerAccounts.get(params.partyAccountId);
+  let party = await db.ledgerAccounts.get(params.partyAccountId);
   if (!party?.id) throw new Error("Party account not found");
+  if (!party.uid) {
+    party = { ...party, uid: newUid() };
+    await db.ledgerAccounts.update(party.id, { uid: party.uid });
+  }
 
   const isReceive = params.direction === "Receive";
   const method: PaymentMethod = params.method ?? "Cash";
   const accountId = typeof params.accountId === "number" ? params.accountId : await getOrCreateDefaultCashAccountId();
+  let financialAccount = await db.financialAccounts.get(accountId);
+  if (!financialAccount?.id) throw new Error("Payment account not found");
+  if (!financialAccount.uid) {
+    financialAccount = { ...financialAccount, uid: newUid() };
+    await db.financialAccounts.update(financialAccount.id, { uid: financialAccount.uid });
+  }
   const paymentUid = newUid();
 
   // Option A: Cash always affects Day Book cash-in-hand.
@@ -80,6 +90,19 @@ export async function postPayment(params: {
     };
 
     const paymentId = await db.payments.add(payment);
+    const ledgerEntry = await db.ledgerEntries.get(ledgerEntryId as number);
+    const dayBookEntry = await db.dayBook.get(dayBookEntryId as number);
+
+    const partyAccountPayload = {
+      uid: party.uid,
+      name: party.name,
+      type: party.type,
+    } satisfies Pick<LedgerAccount, "uid" | "name" | "type">;
+    const financialAccountPayload = {
+      uid: financialAccount.uid,
+      name: financialAccount.name,
+      type: financialAccount.type,
+    } satisfies Pick<FinancialAccount, "uid" | "name" | "type">;
 
     // Add an outbox event to sync across devices.
     await db.outbox.add(
@@ -87,7 +110,43 @@ export async function postPayment(params: {
         entityType: "payment.posted",
         entityId: paymentUid,
         op: "create",
-        payload: { paymentId, ledgerEntryId, dayBookEntryId, payment, dayBookUid },
+        payload: {
+          paymentId,
+          ledgerEntryId,
+          dayBookEntryId,
+          payment,
+          partyAccount: partyAccountPayload,
+          financialAccount: financialAccountPayload,
+          ledgerEntry: ledgerEntry
+            ? {
+                uid: ledgerEntry.uid,
+                date: ledgerEntry.date,
+                dateBs: ledgerEntry.dateBs,
+                description: ledgerEntry.description,
+                debit: ledgerEntry.debit,
+                credit: ledgerEntry.credit,
+              }
+            : undefined,
+          dayBook: dayBookEntry
+            ? {
+                uid: dayBookUid,
+                time: dayBookEntry.time,
+                timeBs: dayBookEntry.timeBs,
+                type: dayBookEntry.type,
+                category: dayBookEntry.category,
+                amount: dayBookEntry.amount,
+                description: dayBookEntry.description,
+                method: dayBookEntry.method,
+                account: financialAccountPayload,
+                affectsCash: dayBookEntry.affectsCash,
+                party: dayBookEntry.party,
+                entryStatus: dayBookEntry.entryStatus,
+                refType: dayBookEntry.refType,
+                refId: dayBookEntry.refId,
+              }
+            : undefined,
+          dayBookUid,
+        },
       })
     );
 
