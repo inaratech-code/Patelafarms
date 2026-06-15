@@ -29,6 +29,7 @@ import { makeSyncEvent } from "@/lib/syncEvents";
 import { resetBusinessDataLocal } from "@/lib/resetBusinessData";
 import { recomputeLedgerBalances } from "@/lib/ledger";
 import { bsYmdFromStored } from "@/lib/nepaliDate";
+import { applyIncomingPurchaseCost } from "@/lib/inventoryCost";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -623,6 +624,17 @@ export async function applyEvents(events: SyncEvent[]) {
         const purchasesArr = asArray(payload?.purchases);
         const movementsArr = asArray(payload?.movements);
         const deltasArr = asArray(payload?.inventoryDeltas);
+        const unitCostByItemUid = new Map<string, number>();
+
+        for (const raw of purchasesArr) {
+          const p = asRecord(raw);
+          const itemUid = p ? asString(p.itemUid) : undefined;
+          const quantity = p ? asNumber(p.quantity) : undefined;
+          const totalCost = p ? asNumber(p.totalCost) : undefined;
+          if (itemUid && quantity && quantity > 0 && typeof totalCost === "number") {
+            unitCostByItemUid.set(itemUid, totalCost / quantity);
+          }
+        }
 
         for (const raw of purchasesArr) {
           const p = asRecord(raw);
@@ -658,10 +670,11 @@ export async function applyEvents(events: SyncEvent[]) {
           const d = asRecord(raw);
           const itemUid = d ? asString(d.itemUid) : undefined;
           const delta = d ? asNumber(d.delta) : undefined;
+          const unitCost = d ? asNumber(d.unitCost) ?? (itemUid ? unitCostByItemUid.get(itemUid) : undefined) : undefined;
           if (!itemUid || typeof delta !== "number") continue;
           const inv = await db.inventory.where("uid").equals(itemUid).first();
           if (inv?.id) {
-            await db.inventory.update(inv.id, { quantity: (inv.quantity ?? 0) + delta });
+            await db.inventory.update(inv.id, applyIncomingPurchaseCost(inv, delta, unitCost));
           }
         }
       }
