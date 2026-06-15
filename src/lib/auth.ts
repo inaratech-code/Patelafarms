@@ -5,8 +5,6 @@ import { ensureSupabaseAuth, getSupabaseClient } from "@/lib/supabaseClient";
 
 export const SESSION_KEY = "pf.session.v1";
 export const LAST_ACTIVE_KEY = "pf.lastActiveAt.v1";
-/** Set on sign-in so the app lands on `/` once before other route guards run. */
-export const POST_LOGIN_HOME_KEY = "pf.postLoginHome.v1";
 export const DASHBOARD_PATH = "/";
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 64;
@@ -45,7 +43,6 @@ export function setSession(session: Omit<Session, "createdAt">) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(full));
   // Fresh sign-in must not inherit a stale idle timestamp (would instant-logout).
   localStorage.setItem(LAST_ACTIVE_KEY, String(now));
-  sessionStorage.setItem(POST_LOGIN_HOME_KEY, "1");
   notifySessionChanged();
 }
 

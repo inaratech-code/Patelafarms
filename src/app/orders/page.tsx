@@ -422,7 +422,7 @@ export default function OrdersPage() {
       const purchaseBatchUid = newUid();
       const purchaseRows: Array<Record<string, unknown>> = [];
       const movementRows: Array<Record<string, unknown>> = [];
-      const inventoryDeltas: Array<{ itemUid: string; delta: number }> = [];
+      const inventoryDeltas: Array<{ itemUid: string; delta: number; unitCost: number }> = [];
 
       for (const li of lineItemsResolved) {
         const item = li.item!;
@@ -451,7 +451,7 @@ export default function OrdersPage() {
 
         purchaseRows.push({ ...purchase, itemUid: item.uid, localId: pid });
         movementRows.push({ ...movement, itemUid: item.uid, localId: mid });
-        inventoryDeltas.push({ itemUid: item.uid, delta: li.quantity });
+        inventoryDeltas.push({ itemUid: item.uid, delta: li.quantity, unitCost: li.unitCost });
       }
 
       // Purchase accounting:
