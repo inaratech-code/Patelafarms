@@ -1,4 +1,4 @@
-import NepaliDate from "nepali-date-converter";
+import NepaliDate, { dateConfigMap } from "nepali-date-converter";
 
 export type DateInputCalendar = "AD" | "BS";
 
@@ -72,7 +72,20 @@ export function adYmdToBsParts(adYmd: string): BsDateParts {
   return { year: nd.getYear(), monthIndex: nd.getMonth(), day: nd.getDate() };
 }
 
+export function getBsMonthDays(year: number, monthIndex: number): number | null {
+  const monthName = NEPALI_MONTHS[monthIndex];
+  if (!monthName) return null;
+  return dateConfigMap[String(year)]?.[monthName] ?? null;
+}
+
+export function isValidBsParts(parts: BsDateParts): boolean {
+  if (!Number.isInteger(parts.year) || !Number.isInteger(parts.monthIndex) || !Number.isInteger(parts.day)) return false;
+  const daysInMonth = getBsMonthDays(parts.year, parts.monthIndex);
+  return daysInMonth != null && parts.day >= 1 && parts.day <= daysInMonth;
+}
+
 export function bsPartsToAdYmd(parts: BsDateParts): string {
+  if (!isValidBsParts(parts)) throw new Error("Invalid BS date");
   const nd = new NepaliDate(parts.year, parts.monthIndex, parts.day);
   return adYmdFromDate(nd.toJsDate());
 }
