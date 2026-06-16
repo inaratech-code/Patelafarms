@@ -44,7 +44,13 @@ export function DualDateField({
   const [bsDay, setBsDay] = useState(() => adYmdToBsParts(fallbackAdValue).day);
 
   useEffect(() => {
-    setMode(getStoredDateInputMode());
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setMode(getStoredDateInputMode());
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
