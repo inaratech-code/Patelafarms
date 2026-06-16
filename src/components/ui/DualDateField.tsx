@@ -36,27 +36,35 @@ export function DualDateField({
 }: Props) {
   const autoId = useId();
   const fieldId = id ?? autoId;
-  const adValue = value || todayAdYmd();
+  const fallbackAdValue = value || todayAdYmd();
 
   const [mode, setMode] = useState<DateInputCalendar>(defaultMode);
-  const [bsYear, setBsYear] = useState(() => adYmdToBsParts(adValue).year);
-  const [bsMonthIndex, setBsMonthIndex] = useState(() => adYmdToBsParts(adValue).monthIndex);
-  const [bsDay, setBsDay] = useState(() => adYmdToBsParts(adValue).day);
+  const [bsYear, setBsYear] = useState(() => adYmdToBsParts(fallbackAdValue).year);
+  const [bsMonthIndex, setBsMonthIndex] = useState(() => adYmdToBsParts(fallbackAdValue).monthIndex);
+  const [bsDay, setBsDay] = useState(() => adYmdToBsParts(fallbackAdValue).day);
 
   useEffect(() => {
     setMode(getStoredDateInputMode());
   }, []);
 
   useEffect(() => {
-    const parts = adYmdToBsParts(adValue);
+    const parts = adYmdToBsParts(fallbackAdValue);
     queueMicrotask(() => {
       setBsYear(parts.year);
       setBsMonthIndex(parts.monthIndex);
       setBsDay(parts.day);
     });
-  }, [adValue]);
+  }, [fallbackAdValue]);
+
+  const resetBsParts = () => {
+    const parts = adYmdToBsParts(fallbackAdValue);
+    setBsYear(parts.year);
+    setBsMonthIndex(parts.monthIndex);
+    setBsDay(parts.day);
+  };
 
   const switchMode = (next: DateInputCalendar) => {
+    if (next === "BS" && !value) onChange(fallbackAdValue);
     setMode(next);
     setStoredDateInputMode(next);
   };
@@ -64,12 +72,14 @@ export function DualDateField({
   const applyBs = (year: number, monthIndex: number, day: number) => {
     try {
       onChange(bsPartsToAdYmd({ year, monthIndex, day }));
+      return true;
     } catch {
-      /* invalid BS date */
+      resetBsParts();
+      return false;
     }
   };
 
-  const bsYmd = adYmdToBsYmd(adValue);
+  const bsYmd = value ? adYmdToBsYmd(value) : "";
 
   return (
     <div className={`min-w-0 max-w-full ${className ?? ""}`.trim()}>
@@ -107,7 +117,7 @@ export function DualDateField({
             type="date"
             required={required}
             disabled={disabled}
-            value={adValue}
+            value={value}
             onChange={(e) => onChange(e.target.value)}
             className="min-w-0 flex-1 sm:flex-none sm:w-[11.5rem] px-2.5 py-1.5 border rounded-md bg-white text-sm"
             aria-label="Date (English AD)"
@@ -166,7 +176,7 @@ export function DualDateField({
       </div>
 
       <p className="mt-1 text-xs text-slate-500">
-        AD {formatAdDate(adValue)} · BS {formatBsDate(adValue, bsYmd)}
+        AD {formatAdDate(value)} · BS {formatBsDate(value, bsYmd)}
       </p>
     </div>
   );

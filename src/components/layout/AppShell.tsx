@@ -133,16 +133,25 @@ export function AppShell(props: { children: React.ReactNode }) {
     if (!authReady) return;
     if (isLoginRoute || isBootstrapAllowed) return;
     if (!session?.userId) return;
-    if (session?.roleId && role == null) return;
+    if (session?.roleId && role === undefined) return;
+    if (session?.roleId && role === null) {
+      clearSession();
+      window.location.replace("/login");
+      return;
+    }
     const path = pathname || "/";
     if (path === DASHBOARD_PATH && sessionStorage.getItem(POST_LOGIN_HOME_KEY) === "1") {
       sessionStorage.removeItem(POST_LOGIN_HOME_KEY);
-      return;
     }
     const perms = normalizePermissions(role?.permissions as string[] | undefined);
     const target = pickDefaultRoute(perms);
     if (!canAccessPath(perms, path)) {
-      if (target !== path) window.location.replace(target);
+      if (target) {
+        if (target !== path) window.location.replace(target);
+        return;
+      }
+      clearSession();
+      window.location.replace("/login");
     }
   }, [authReady, isBootstrapAllowed, isLoginRoute, pathname, role, session?.roleId, session?.userId]);
 
@@ -178,6 +187,15 @@ export function AppShell(props: { children: React.ReactNode }) {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
         <p className="text-sm text-slate-500">Redirecting to sign in…</p>
+      </div>
+    );
+  }
+
+  if (session?.roleId && (role === undefined || role === null) && !isBootstrapAllowed) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        <p className="text-sm text-slate-500">Checking permissions…</p>
       </div>
     );
   }
