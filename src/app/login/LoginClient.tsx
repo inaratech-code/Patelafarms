@@ -5,10 +5,9 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { DASHBOARD_PATH, loginWithPassword, getSession, sha256Base64 } from "@/lib/auth";
 import { formatLoginError } from "@/lib/loginErrors";
-import { FARM_ID_KEY, getFarmId } from "@/lib/farm";
+import { getFarmId } from "@/lib/farm";
 import { bootstrapDeviceLoginFromCloud, syncNow } from "@/lib/sync";
 import { ensureSupabaseAuth } from "@/lib/supabaseClient";
-import { setSyncState } from "@/lib/syncState";
 import { clearInvalidSessionStorage } from "@/lib/sessionGuard";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 
@@ -61,8 +60,6 @@ export function LoginClient() {
         if (msg !== "User not found" && msg !== "User has no password set") throw err;
 
         // Slow path: link farm via username + password, pull users, then sign in.
-        localStorage.removeItem(FARM_ID_KEY);
-        setSyncState({});
         try {
           await ensureSupabaseAuth();
         } catch (authErr: unknown) {
