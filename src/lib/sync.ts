@@ -74,6 +74,7 @@ async function upsertUserFromSyncPayload(payload: unknown) {
   const u = p ? asRecord(p.user) : undefined;
   const uid = u ? asString(u.uid) : undefined;
   if (!uid) return;
+  const found = await db.users.where("uid").equals(uid).first();
   const roleUid = er ? asString(er.uid) : undefined;
   let roleId = 0;
   if (roleUid) {
@@ -87,10 +88,7 @@ async function upsertUserFromSyncPayload(payload: unknown) {
       if (rl?.id) roleId = rl.id;
     }
   }
-  if (!roleId) {
-    const any = await db.roles.orderBy("id").first();
-    if (any?.id) roleId = any.id;
-  }
+  if (!roleId && found?.roleId) roleId = found.roleId;
   if (!roleId) return;
 
   const row: Omit<User, "id"> = {
@@ -101,7 +99,6 @@ async function upsertUserFromSyncPayload(payload: unknown) {
     passwordHash: asString(u?.passwordHash),
     roleId,
   };
-  const found = await db.users.where("uid").equals(uid).first();
   if (found?.id) await db.users.update(found.id, row);
   else await db.users.add(row);
 }
@@ -192,6 +189,28 @@ function sortEventsForApply(events: SyncEvent[]): SyncEvent[] {
     if (oa !== ob) return oa - ob;
     return a.createdAt.localeCompare(b.createdAt);
   });
+}
+
+async function replayRoleUserRecordsFromOutbox() {
+  const events = await db.outbox.where("entityType").anyOf("role.record", "user.record").toArray();
+  for (const e of sortEventsForApply(events)) {
+    const payload = asRecord(e.payload);
+    if (e.entityType === "role.record" && (e.op === "create" || e.op === "update")) {
+      const role = asRecord(payload?.role);
+      if (role) await upsertRoleFromSyncPayload(role);
+    }
+    if (e.entityType === "role.record" && e.op === "delete") {
+      const uid = asString(payload?.uid) ?? e.entityId;
+      if (uid) await db.roles.where("uid").equals(uid).delete();
+    }
+    if (e.entityType === "user.record" && (e.op === "create" || e.op === "update")) {
+      await upsertUserFromSyncPayload(payload);
+    }
+    if (e.entityType === "user.record" && e.op === "delete") {
+      const uid = asString(payload?.uid) ?? e.entityId;
+      if (uid) await db.users.where("uid").equals(uid).delete();
+    }
+  }
 }
 
 function fromSupabaseRow(r: unknown): SyncEvent {
@@ -880,6 +899,7 @@ export async function pullAllFarmEvents() {
     total += pulled;
     if (pulled === 0) break;
   }
+  await replayRoleUserRecordsFromOutbox();
   return { pulled: total };
 }
 
