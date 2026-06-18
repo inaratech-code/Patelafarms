@@ -301,7 +301,8 @@ export async function pullEvents() {
   const farmId = getFarmId();
   if (!farmId) return { pulled: 0 };
   const state = getSyncState();
-  let since = state.lastPulledAt;
+  let sinceAt = state.lastPulledAt;
+  let sinceId = state.lastPulledId;
   let totalPulled = 0;
 
   // Page through events so new devices catch up even when >500 changes exist.
@@ -311,8 +312,15 @@ export async function pullEvents() {
       .select("*")
       .eq("farm_id", farmId)
       .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .limit(500);
-    if (since) query = query.gt("created_at", since);
+    if (sinceAt && sinceId) {
+      query = query.or(`created_at.gt.${sinceAt},and(created_at.eq.${sinceAt},id.gt.${sinceId})`);
+    } else if (sinceAt) {
+      // Older clients only stored the timestamp. Re-read that boundary once so
+      // rows sharing it are not lost, then continue with the compound cursor.
+      query = query.gte("created_at", sinceAt);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -321,8 +329,10 @@ export async function pullEvents() {
 
     await applyEvents(sortEventsForApply(rows));
     totalPulled += rows.length;
-    since = rows[rows.length - 1].createdAt;
-    setSyncState({ lastPulledAt: since });
+    const last = rows[rows.length - 1];
+    sinceAt = last.createdAt;
+    sinceId = last.id;
+    setSyncState({ lastPulledAt: sinceAt, lastPulledId: sinceId });
 
     if (rows.length < 500) break;
   }
