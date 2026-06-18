@@ -74,6 +74,7 @@ async function upsertUserFromSyncPayload(payload: unknown) {
   const u = p ? asRecord(p.user) : undefined;
   const uid = u ? asString(u.uid) : undefined;
   if (!uid) return;
+  const found = await db.users.where("uid").equals(uid).first();
   const roleUid = er ? asString(er.uid) : undefined;
   let roleId = 0;
   if (roleUid) {
@@ -87,9 +88,9 @@ async function upsertUserFromSyncPayload(payload: unknown) {
       if (rl?.id) roleId = rl.id;
     }
   }
-  if (!roleId) {
-    const any = await db.roles.orderBy("id").first();
-    if (any?.id) roleId = any.id;
+  if (!roleId && found?.roleId) {
+    const existingRole = await db.roles.get(found.roleId);
+    if (existingRole?.id) roleId = existingRole.id;
   }
   if (!roleId) return;
 
@@ -101,7 +102,6 @@ async function upsertUserFromSyncPayload(payload: unknown) {
     passwordHash: asString(u?.passwordHash),
     roleId,
   };
-  const found = await db.users.where("uid").equals(uid).first();
   if (found?.id) await db.users.update(found.id, row);
   else await db.users.add(row);
 }
