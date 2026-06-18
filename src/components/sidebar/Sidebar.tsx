@@ -100,10 +100,8 @@ function SidebarContent(props: { variant: "desktop" | "mobile"; onNavigate?: () 
     return (await db.roles.get(roleId)) ?? null;
   }, [session?.roleId]);
   const perms = useMemo(() => {
-    // While the role record is loading, don't hide nav items (prevents "blank" sidebar flash).
-    if (session?.roleId && role == null) return normalizePermissions(["*"]);
     return normalizePermissions(role?.permissions as string[] | undefined);
-  }, [role, session?.roleId]);
+  }, [role]);
 
   const alertBadge = useMemo(
     () => computeNavBadgeCount({ inventory, ledgerAccounts, ledgerEntries, doseReminders }),
