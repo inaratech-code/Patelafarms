@@ -302,6 +302,7 @@ export async function pullEvents() {
   if (!farmId) return { pulled: 0 };
   const state = getSyncState();
   let since = state.lastPulledAt;
+  let sinceId = state.lastPulledId;
   let totalPulled = 0;
 
   // Page through events so new devices catch up even when >500 changes exist.
@@ -311,8 +312,15 @@ export async function pullEvents() {
       .select("*")
       .eq("farm_id", farmId)
       .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .limit(500);
-    if (since) query = query.gt("created_at", since);
+    if (since && sinceId) {
+      query = query.or(`created_at.gt.${since},and(created_at.eq.${since},id.gt.${sinceId})`);
+    } else if (since) {
+      // Older sync state only stored the timestamp. Re-read that boundary once;
+      // applyEvents is idempotent and will keep already-seen rows from duplicating.
+      query = query.gte("created_at", since);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -321,8 +329,10 @@ export async function pullEvents() {
 
     await applyEvents(sortEventsForApply(rows));
     totalPulled += rows.length;
-    since = rows[rows.length - 1].createdAt;
-    setSyncState({ lastPulledAt: since });
+    const last = rows[rows.length - 1];
+    since = last.createdAt;
+    sinceId = last.id;
+    setSyncState({ lastPulledAt: since, lastPulledId: sinceId });
 
     if (rows.length < 500) break;
   }
