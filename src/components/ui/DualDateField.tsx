@@ -6,7 +6,7 @@ import {
   NEPALI_MONTHS,
   adYmdToBsParts,
   adYmdToBsYmd,
-  bsPartsToAdYmd,
+  coerceBsPartsToAdYmd,
   formatAdDate,
   formatBsDate,
   getStoredDateInputMode,
@@ -44,7 +44,7 @@ export function DualDateField({
   const [bsDay, setBsDay] = useState(() => adYmdToBsParts(adValue).day);
 
   useEffect(() => {
-    setMode(getStoredDateInputMode());
+    queueMicrotask(() => setMode(getStoredDateInputMode()));
   }, []);
 
   useEffect(() => {
@@ -62,11 +62,12 @@ export function DualDateField({
   };
 
   const applyBs = (year: number, monthIndex: number, day: number) => {
-    try {
-      onChange(bsPartsToAdYmd({ year, monthIndex, day }));
-    } catch {
-      /* invalid BS date */
-    }
+    const resolved = coerceBsPartsToAdYmd({ year, monthIndex, day });
+    if (!resolved) return;
+    setBsYear(resolved.parts.year);
+    setBsMonthIndex(resolved.parts.monthIndex);
+    setBsDay(resolved.parts.day);
+    onChange(resolved.adYmd);
   };
 
   const bsYmd = adYmdToBsYmd(adValue);
@@ -119,11 +120,11 @@ export function DualDateField({
               min={2000}
               max={2100}
               disabled={disabled}
+              required={required}
               value={bsYear}
               onChange={(e) => {
                 const y = Number(e.target.value);
                 if (!Number.isFinite(y)) return;
-                setBsYear(y);
                 applyBs(y, bsMonthIndex, bsDay);
               }}
               className="w-[4.25rem] shrink-0 px-2 py-1.5 border rounded-md bg-white text-sm tabular-nums"
@@ -131,10 +132,10 @@ export function DualDateField({
             />
             <select
               disabled={disabled}
+              required={required}
               value={bsMonthIndex}
               onChange={(e) => {
                 const mi = Number(e.target.value);
-                setBsMonthIndex(mi);
                 applyBs(bsYear, mi, bsDay);
               }}
               className="min-w-0 flex-1 sm:w-[6.5rem] px-2 py-1.5 border rounded-md bg-white text-sm"
@@ -151,11 +152,11 @@ export function DualDateField({
               min={1}
               max={32}
               disabled={disabled}
+              required={required}
               value={bsDay}
               onChange={(e) => {
                 const d = Number(e.target.value);
                 if (!Number.isFinite(d)) return;
-                setBsDay(d);
                 applyBs(bsYear, bsMonthIndex, d);
               }}
               className="w-12 shrink-0 px-2 py-1.5 border rounded-md bg-white text-sm tabular-nums"

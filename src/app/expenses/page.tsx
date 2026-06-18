@@ -3,7 +3,7 @@
 import { Plus, Receipt } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type DayBookEntry } from "@/lib/db";
+import { db } from "@/lib/db";
 import { getOrCreateDefaultCashAccountId, sortAccountsForPicker, type PaymentMethod } from "@/lib/accounts";
 import { makeSyncEvent } from "@/lib/syncEvents";
 import { newUid } from "@/lib/uid";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/responsive-table";
 import { DualDateDisplay } from "@/components/ui/DualDateDisplay";
 import { DualDateField } from "@/components/ui/DualDateField";
-import { datePairFromAdYmd, timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
+import { timePairFromAdYmd, todayAdYmd } from "@/lib/nepaliDate";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -68,6 +68,8 @@ export default function ExpensesPage() {
 
     const { time, timeBs } = timePairFromAdYmd(form.date);
     const accountId = Number(form.accountId) || (await getOrCreateDefaultCashAccountId());
+    const financialAccount = await db.financialAccounts.get(accountId);
+    const financialAccountUid = financialAccount?.uid ?? newUid();
 
     try {
       setIsSaving(true);
@@ -86,6 +88,9 @@ export default function ExpensesPage() {
       };
 
       await db.transaction("rw", db.tables, async () => {
+        if (financialAccount?.id && !financialAccount.uid) {
+          await db.financialAccounts.update(financialAccount.id, { uid: financialAccountUid });
+        }
         const id = await db.dayBook.add(entry);
         const cashLedgerId = await getOrCreateCashLedgerAccountId();
         const ledgerEntryId = (await addLedgerEntry({
@@ -121,7 +126,15 @@ export default function ExpensesPage() {
             entityType: "daybook.expense",
             entityId: entry.uid!,
             op: "create",
-            payload: { id, entry },
+            payload: {
+              id,
+              entry: {
+                ...entry,
+                account: financialAccount
+                  ? { uid: financialAccountUid, name: financialAccount.name, type: financialAccount.type }
+                  : null,
+              },
+            },
           })
         );
       });

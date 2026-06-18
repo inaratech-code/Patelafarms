@@ -96,10 +96,12 @@ export function LedgerDetailClient(props: { accountId: number }) {
     ) || [];
 
   const purchases = useLiveQuery(() => db.purchases.toArray()) || [];
+  const accountName = account?.name;
+  const accountType = account?.type;
 
   const duePurchaseDaysForAccount = useMemo(() => {
-    if (!account?.name || account.type !== "Supplier") return 0;
-    const name = account.name.trim();
+    if (!accountName || accountType !== "Supplier") return 0;
+    const name = accountName.trim();
     const days = new Set<string>();
     for (const p of purchases) {
       if (p.supplierName?.trim() !== name) continue;
@@ -107,7 +109,7 @@ export function LedgerDetailClient(props: { accountId: number }) {
       days.add(p.date.slice(0, 10));
     }
     return days.size;
-  }, [account?.name, account?.type, purchases]);
+  }, [accountName, accountType, purchases]);
 
   const rows = useMemo(() => {
     const sorted = entries.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -137,6 +139,32 @@ export function LedgerDetailClient(props: { accountId: number }) {
     const to = formatDualDate(rows[rows.length - 1].date, rows[rows.length - 1].dateBs);
     return from === to ? from : `${from} to ${to}`;
   }, [rows]);
+
+  const exportMeta = useMemo(
+    () => ({
+      accountName: accountName ?? "Account",
+      accountType,
+      timePeriod,
+      closingBalance: latestBalance,
+      totalDebit: totals.debit,
+      totalCredit: totals.credit,
+    }),
+    [accountName, accountType, timePeriod, latestBalance, totals.debit, totals.credit]
+  );
+
+  const exportRows = useMemo(
+    () =>
+      rows.map((r) => ({
+        date: r.date,
+        dateBs: r.dateBs,
+        description: r.description,
+        opening: r.opening,
+        debit: r.debit,
+        credit: r.credit,
+        closing: r.closing,
+      })),
+    [rows]
+  );
 
   if (!Number.isFinite(accountId)) {
     return (
@@ -179,32 +207,6 @@ export function LedgerDetailClient(props: { accountId: number }) {
       setIsSaving(false);
     }
   };
-
-  const exportMeta = useMemo(
-    () => ({
-      accountName: account?.name ?? "Account",
-      accountType: account?.type,
-      timePeriod,
-      closingBalance: latestBalance,
-      totalDebit: totals.debit,
-      totalCredit: totals.credit,
-    }),
-    [account?.name, account?.type, timePeriod, latestBalance, totals.debit, totals.credit]
-  );
-
-  const exportRows = useMemo(
-    () =>
-      rows.map((r) => ({
-        date: r.date,
-        dateBs: r.dateBs,
-        description: r.description,
-        opening: r.opening,
-        debit: r.debit,
-        credit: r.credit,
-        closing: r.closing,
-      })),
-    [rows]
-  );
 
   const handleExportPdf = () => {
     exportLedgerPdf(exportMeta, exportRows);

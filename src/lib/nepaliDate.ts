@@ -77,6 +77,26 @@ export function bsPartsToAdYmd(parts: BsDateParts): string {
   return adYmdFromDate(nd.toJsDate());
 }
 
+export function coerceBsPartsToAdYmd(parts: BsDateParts): { parts: BsDateParts; adYmd: string } | null {
+  const monthIndex = Math.min(Math.max(parts.monthIndex, 0), NEPALI_MONTHS.length - 1);
+  const requestedDay = Math.min(Math.max(Math.trunc(parts.day), 1), 32);
+
+  for (let day = requestedDay; day >= 1; day--) {
+    try {
+      const candidate = { year: parts.year, monthIndex, day };
+      const adYmd = bsPartsToAdYmd(candidate);
+      const roundTrip = adYmdToBsParts(adYmd);
+      if (roundTrip.year === candidate.year && roundTrip.monthIndex === candidate.monthIndex && roundTrip.day === day) {
+        return { parts: candidate, adYmd };
+      }
+    } catch {
+      // Try the previous day; month lengths vary by BS year.
+    }
+  }
+
+  return null;
+}
+
 export function isoToBsYmd(iso: string): string {
   return adYmdToBsYmd(isoToAdYmd(iso));
 }
