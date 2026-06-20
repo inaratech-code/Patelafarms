@@ -195,7 +195,7 @@ export default function PurchasesPage() {
               totalCost: lineCost,
               purchases: [{ ...purchase, itemUid: item.uid }],
               movements: [{ ...movement, itemUid: item.uid }],
-              inventoryDeltas: [{ itemUid: item.uid, delta: li.quantity }],
+              inventoryDeltas: [{ itemUid: item.uid, delta: li.quantity, unitCost: li.unitCost }],
             },
           })
         );

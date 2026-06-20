@@ -96,6 +96,7 @@ export default function OrdersPage() {
   
   const [activeTab, setActiveTab] = useState<"Sales" | "Purchases">("Sales");
   const [showForm, setShowForm] = useState(false);
+  const [isSaleSaving, setIsSaleSaving] = useState(false);
 
   const [saleQuantityStr, setSaleQuantityStr] = useState("1");
   const [saleUnit, setSaleUnit] = useState<string>("pcs");
@@ -195,6 +196,7 @@ export default function OrdersPage() {
 
   const handleSaleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaleSaving) return;
     const qtyParsed = parseSaleQuantityInput(saleQuantityStr);
     if (qtyParsed == null) {
       return alert("Enter a quantity.");
@@ -220,14 +222,20 @@ export default function OrdersPage() {
       return alert("Customer name is required for Credit sales (for ledger).");
     }
 
-    await db.transaction('rw', db.tables, async () => {
+    setIsSaleSaving(true);
+    try {
+      await db.transaction('rw', db.tables, async () => {
       const cashLedgerAccountId = !isCredit ? await getOrCreateCashLedgerAccountId() : null;
+      const freshItem = await db.inventory.get(item.id!);
+      if (!freshItem?.id || (freshItem.quantity ?? 0) < qtyParsed) {
+        throw new Error("Not enough stock!");
+      }
 
       // 1. Record Sale
       const saleUid = newUid();
       const sale = {
         uid: saleUid,
-        itemId: item.id!,
+        itemId: freshItem.id,
         quantity: qtyParsed,
         saleUnit: unitLabel,
         totalPrice,
@@ -243,9 +251,9 @@ export default function OrdersPage() {
       const saleId = await db.sales.add(sale);
 
       // 2. Reduce Stock
-      await db.inventory.update(item.id!, { quantity: item.quantity - qtyParsed });
+      await db.inventory.update(freshItem.id, { quantity: freshItem.quantity - qtyParsed });
       // 3. Record Movement
-      const movement = { uid: newUid(), itemId: item.id!, quantity: qtyParsed, type: 'OUT' as const, reason: 'Sale' as const, date, dateBs };
+      const movement = { uid: newUid(), itemId: freshItem.id, quantity: qtyParsed, type: 'OUT' as const, reason: 'Sale' as const, date, dateBs };
       const movementId = await db.stockMovement.add(movement);
       // 4. Day book: cash (affects cash) + credit (journal-only, does not affect cash balance)
       let dayBookId: number | null = null;
@@ -373,16 +381,22 @@ export default function OrdersPage() {
           entityId: saleUid,
           op: "create",
           payload: {
-            sale: { ...sale, itemUid: item.uid },
-            movement: { ...movement, itemUid: item.uid },
-            inventoryDelta: { itemUid: item.uid, delta: -qtyParsed },
+            sale: { ...sale, itemUid: freshItem.uid },
+            movement: { ...movement, itemUid: freshItem.uid },
+            inventoryDelta: { itemUid: freshItem.uid, delta: -qtyParsed },
             dayBookUid,
             ledgerEntryUid: ledgerEntry?.uid ?? null,
             ledgerAccountUid: ledgerAccount?.uid ?? null,
           },
         })
       );
-    });
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Sale could not be saved.");
+      return;
+    } finally {
+      setIsSaleSaving(false);
+    }
 
     setShowForm(false);
     setSaleQuantityStr("1");
@@ -422,7 +436,7 @@ export default function OrdersPage() {
       const purchaseBatchUid = newUid();
       const purchaseRows: Array<Record<string, unknown>> = [];
       const movementRows: Array<Record<string, unknown>> = [];
-      const inventoryDeltas: Array<{ itemUid: string; delta: number }> = [];
+      const inventoryDeltas: Array<{ itemUid: string; delta: number; unitCost: number }> = [];
 
       for (const li of lineItemsResolved) {
         const item = li.item!;
@@ -451,7 +465,7 @@ export default function OrdersPage() {
 
         purchaseRows.push({ ...purchase, itemUid: item.uid, localId: pid });
         movementRows.push({ ...movement, itemUid: item.uid, localId: mid });
-        inventoryDeltas.push({ itemUid: item.uid, delta: li.quantity });
+        inventoryDeltas.push({ itemUid: item.uid, delta: li.quantity, unitCost: li.unitCost });
       }
 
       // Purchase accounting:
@@ -767,7 +781,13 @@ export default function OrdersPage() {
             <div className="text-lg font-semibold text-slate-900">
               Total: Rs. {saleTotal}
             </div>
-            <button type="submit" className="px-6 py-2 bg-alert-green text-white rounded-md hover:bg-alert-green/90">Complete Sale</button>
+            <button
+              type="submit"
+              disabled={isSaleSaving}
+              className="px-6 py-2 bg-alert-green text-white rounded-md hover:bg-alert-green/90 disabled:opacity-60"
+            >
+              {isSaleSaving ? "Saving..." : "Complete Sale"}
+            </button>
           </div>
         </form>
       )}
