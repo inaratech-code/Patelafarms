@@ -143,13 +143,13 @@ export function requiredPermissionsForPath(pathname: string): PermissionId[] {
   return [];
 }
 
-export function pickDefaultRoute(perms: Set<PermissionId>): string {
+export function pickDefaultRoute(perms: Set<PermissionId>): string | null {
   if (perms.has("*") || perms.has("dashboard")) return "/";
   if (perms.has("transactions.sales")) return "/orders";
   if (perms.has("inventory.items")) return "/inventory";
   if (perms.has("accounts.ledger")) return "/ledger";
   if (perms.has("reports")) return "/reports";
   if (perms.has("settings")) return "/settings";
-  return "/";
+  return null;
 }
 
