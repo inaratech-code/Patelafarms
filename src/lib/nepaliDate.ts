@@ -54,27 +54,48 @@ export function isoToAdYmd(iso: string): string {
 }
 
 export function adYmdToBsYmd(adYmd: string): string {
-  if (!adYmd) return "";
-  const nd = new NepaliDate(new Date(`${adYmd}T12:00:00`));
-  const y = nd.getYear();
-  const m = String(nd.getMonth() + 1).padStart(2, "0");
-  const d = String(nd.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  const ymd = isoToAdYmd(adYmd.trim());
+  if (!ymd) return "";
+  try {
+    const nd = new NepaliDate(new Date(`${ymd}T12:00:00`));
+    const y = nd.getYear();
+    const m = String(nd.getMonth() + 1).padStart(2, "0");
+    const d = String(nd.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  } catch {
+    return "";
+  }
 }
 
 export function bsYmdToAdYmd(bsYmd: string): string {
-  const nd = new NepaliDate(bsYmd);
-  return adYmdFromDate(nd.toJsDate());
+  if (!bsYmd?.trim()) return "";
+  try {
+    const nd = new NepaliDate(bsYmd);
+    return adYmdFromDate(nd.toJsDate());
+  } catch {
+    return "";
+  }
 }
 
 export function adYmdToBsParts(adYmd: string): BsDateParts {
-  const nd = new NepaliDate(new Date(`${adYmd}T12:00:00`));
-  return { year: nd.getYear(), monthIndex: nd.getMonth(), day: nd.getDate() };
+  const ymd = isoToAdYmd(adYmd.trim()) || todayAdYmd();
+  try {
+    const nd = new NepaliDate(new Date(`${ymd}T12:00:00`));
+    return { year: nd.getYear(), monthIndex: nd.getMonth(), day: nd.getDate() };
+  } catch {
+    const fallback = todayAdYmd();
+    const nd = new NepaliDate(new Date(`${fallback}T12:00:00`));
+    return { year: nd.getYear(), monthIndex: nd.getMonth(), day: nd.getDate() };
+  }
 }
 
 export function bsPartsToAdYmd(parts: BsDateParts): string {
-  const nd = new NepaliDate(parts.year, parts.monthIndex, parts.day);
-  return adYmdFromDate(nd.toJsDate());
+  try {
+    const nd = new NepaliDate(parts.year, parts.monthIndex, parts.day);
+    return adYmdFromDate(nd.toJsDate());
+  } catch {
+    return todayAdYmd();
+  }
 }
 
 export function isoToBsYmd(iso: string): string {
@@ -83,8 +104,11 @@ export function isoToBsYmd(iso: string): string {
 
 /** Canonical AD ISO + parallel BS for `date` fields. */
 export function datePairFromAdYmd(adYmd: string): { date: string; dateBs: string } {
-  const ymd = adYmd.trim();
-  return { date: toIsoFromDateOnly(ymd), dateBs: adYmdToBsYmd(ymd) };
+  const ymd = isoToAdYmd(adYmd.trim());
+  if (!ymd) throw new Error("Invalid date");
+  const dateBs = adYmdToBsYmd(ymd);
+  if (!dateBs) throw new Error("Invalid date");
+  return { date: toIsoFromDateOnly(ymd), dateBs };
 }
 
 /** Same as datePairFromAdYmd but accepts ISO or YYYY-MM-DD. */
@@ -108,9 +132,14 @@ export function formatAdDate(isoOrAd?: string): string {
 }
 
 export function formatBsDate(isoOrAd?: string, dateBs?: string): string {
-  const bs =
-    dateBs?.trim() ||
-    (isoOrAd ? adYmdToBsYmd(isoToAdYmd(isoOrAd)) : "");
+  let bs = dateBs?.trim() ?? "";
+  if (!bs && isoOrAd) {
+    try {
+      bs = adYmdToBsYmd(isoToAdYmd(isoOrAd));
+    } catch {
+      bs = "";
+    }
+  }
   if (!bs) return "—";
   try {
     return new NepaliDate(bs).format("DD MMMM YYYY", "en");
@@ -121,7 +150,8 @@ export function formatBsDate(isoOrAd?: string, dateBs?: string): string {
 
 export function formatDualDate(isoOrAd?: string, dateBs?: string): string {
   if (!isoOrAd && !dateBs) return "—";
-  return `${formatAdDate(isoOrAd ?? (dateBs ? bsYmdToAdYmd(dateBs) : ""))} · ${formatBsDate(isoOrAd, dateBs)} BS`;
+  const adFallback = dateBs ? bsYmdToAdYmd(dateBs) : "";
+  return `${formatAdDate(isoOrAd ?? adFallback)} · ${formatBsDate(isoOrAd, dateBs)} BS`;
 }
 
 export function bsYmdFromStored(isoOrAd?: string, existingBs?: string): string | undefined {

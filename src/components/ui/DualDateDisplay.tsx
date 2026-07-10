@@ -11,7 +11,8 @@ type Props = {
 export function DualDateDisplay({ iso, dateBs, layout = "stack", className }: Props) {
   if (!iso && !dateBs) return <span className={className}>—</span>;
 
-  const adLabel = formatAdDate(iso ?? (dateBs ? bsYmdToAdYmd(dateBs) : ""));
+  const adFromBs = dateBs ? bsYmdToAdYmd(dateBs) : "";
+  const adLabel = formatAdDate(iso ?? adFromBs);
   const bsLabel = formatBsDate(iso, dateBs);
 
   if (layout === "inline") {
